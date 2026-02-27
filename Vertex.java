@@ -1,58 +1,82 @@
 public class Vertex {
-    private int x, y, z;
-    public Vertex(int x, int y, int z) {
+    private double x, y, z;
+    public Vertex(double x, double y, double z) {
         this.x = x;
         this.y = y;
         this.z = z;
     }
 
-    public void setX(int x) {
+    public void setX(double x) {
         this.x = x;
     }
-    public void setY(int y) {
+    public void setY(double y) {
         this.y = y;
     }
-    public void setZ(int z) {
+    public void setZ(double z) {
         this.z = z;
     }
 
-    public int getX() {
+    public double getX() {
         return x;
     }
-    public int getY() {
+    public double getY() {
         return y;
     }
-    public int getZ() {
+    public double getZ() {
         return z;
     }
 
-    public Vertex rotateX(double angle) {
+    public void translate(double dx, double dy, double dz) {
+        this.x += dx;
+        this.y += dy;
+        this.z += dz;
+    }
+
+    public void rotateX(double angle) {
         double cos = Math.cos(angle * Math.PI / 180);
         double sin = Math.sin(angle * Math.PI / 180);
 
-        int x = this.x;
-        int y = (int) (this.y * cos - this.z * sin);
-        int z = (int) (this.z * cos + this.y * sin);
-        return new Vertex(x, y, z);
+        double t = this.y * cos - this.z * sin;
+        double r = this.z * cos + this.y * sin;
+        this.y = t;
+        this.z = r;
     }
 
-    public Vertex rotateY(double angle) {
+    public void rotateY(double angle) {
         double cos = Math.cos(angle * Math.PI / 180);
         double sin = Math.sin(angle * Math.PI / 180);
 
-        int x = (int) (this.x * cos + this.z * sin);
-        int y = this.y;
-        int z = (int) (this.z * cos - this.x * sin);
-        return new Vertex(x, y, z);
+        double t = this.x * cos + this.z * sin;
+        double r = this.z * cos - this.x * sin;;
+        this.x = t;
+        this.z = r;
     }
 
-    public Vertex rotateZ(double angle) {
+    public void rotateZ(double angle) {
         double cos = Math.cos(angle * Math.PI / 180);
         double sin = Math.sin(angle * Math.PI / 180);
 
-        int x = (int) (this.x * cos - this.y * sin);
-        int y = (int) (this.y * cos + this.x * sin);
-        int z = this.z;
-        return new Vertex(x, y, z);
+        double t = this.x * cos - this.y * sin;
+        double r = this.y * cos + this.x * sin;
+        this.x = t;
+        this.y = r;
     }
+
+    public void subtract(Vertex v) {
+        this.x -= v.getX();
+        this.y -= v.getY();
+        this.z -= v.getZ();
+    }
+
+    public void add(Vertex v) {
+        this.x += v.getX();
+        this.y += v.getY();
+        this.z += v.getZ();
+    }
+
+    @Override
+    public String toString() {
+        return "(" + this.x + ", " + this.y + ", " + this.z + ")";
+    }
+
 }
