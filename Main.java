@@ -1,11 +1,11 @@
 import javax.swing.*;
 import java.awt.*;
+import java.awt.image.BufferedImage;
 import java.util.ArrayList;
-import java.util.List;
 
 public class Main extends JPanel {
-    private List<Triangle> triangles = new ArrayList<>();
-    private List<Shape> shapes = new ArrayList<>();
+    private static ArrayList<Triangle> triangles = new ArrayList<>();
+    private ArrayList<Shape> shapes = new ArrayList<>();
     public static void main(String[] args) {
         javax.swing.SwingUtilities.invokeLater(new Runnable() {
             public void run() {
@@ -30,14 +30,22 @@ public class Main extends JPanel {
         for (Triangle t : triangles) {
             t.draw(g);
             t.drawTrail(g);
+            t.drawBoundingBox(g);
         }
 
-        for (Shape s : shapes) {
+        /*for (Shape s : shapes) {
             s.draw(g);
             s.drawTrail(g);
             s.drawBoundingBox(g);
-        }
+        }*/
+
+        BufferedImage canvas = new BufferedImage(getWidth(), getHeight(), BufferedImage.TYPE_INT_RGB);
+
+        
+        //g.drawImage(canvas, 0, 0, null);
     }
+
+    
 
     private static void createAndShowGUI() {
         JFrame frame = new JFrame("3D Renderer");
@@ -51,14 +59,21 @@ public class Main extends JPanel {
         Vertex v4 = new Vertex(250, 200, 0);
         Triangle t2 = new Triangle(v3, v2, v4);
 
-        Shape s1 = new Shape(new Triangle[]{t1, t2});
+        Vertex v5 = new Vertex(300, 300, 0);
+        Triangle t3 = new Triangle(v3, v4, v5);
 
-        Timer timer = new Timer(10, e -> {
+        Shape s1 = new Shape(new Triangle[]{t1, t2, t3});
+
+        for (Triangle t : s1.getTriangles()) {
+            triangles.add(t);
+        }
+
+        Timer timer = new Timer(20, e -> {
             //t1.rotateX(1); 
             //t1.rotateY(1);
             //t1.rotateZ(1);
             s1.RotateX(1);
-            s1.RotateY(1);
+            s1.RotateY(2);
             s1.RotateZ(1);
             panel.repaint();
         });

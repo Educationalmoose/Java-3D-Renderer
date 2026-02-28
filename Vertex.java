@@ -63,15 +63,17 @@ public class Vertex {
     }
 
     public void subtract(Vertex v) {
-        this.x -= v.getX();
-        this.y -= v.getY();
-        this.z -= v.getZ();
+        this.x = this.x - v.getX();
+        this.y = this.y - v.getY();
+        this.z = this.z - v.getZ();
+        //return new Vertex(x, y, z);
     }
 
     public void add(Vertex v) {
-        this.x += v.getX();
-        this.y += v.getY();
-        this.z += v.getZ();
+        this.x = this.x + v.getX();
+        this.y = this.y + v.getY();
+        this.z = this.z + v.getZ();
+        //return new Vertex(x, y, z);
     }
 
     @Override

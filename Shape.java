@@ -12,15 +12,15 @@ public class Shape {
             this.triangles.add(triangle);
         }
         center = getCenter();
-        System.out.println(center.toString());
+        //System.out.println(center.toString());
         boundingBox = getBoundingBox();
     }
 
     public double[] getBoundingBox() {
         double x1 = triangles.get(0).getVertices()[0].getX();
-        double x2 = triangles.get(0).getVertices()[0].getX();;
-        double y1 = triangles.get(0).getVertices()[0].getY();;
-        double y2 = triangles.get(0).getVertices()[0].getY();;
+        double x2 = triangles.get(0).getVertices()[0].getX();
+        double y1 = triangles.get(0).getVertices()[0].getY();
+        double y2 = triangles.get(0).getVertices()[0].getY();
         
         for (Triangle t : triangles) {
             for (Vertex v: t.getVertices()) {
@@ -37,6 +37,14 @@ public class Shape {
         }
 
         return new double[]{x1, x2, y1, y2};
+    }
+
+    public Triangle[] getTriangles() {
+        Triangle[] ts = new Triangle[triangles.size()];
+        for(int i = 0; i < triangles.size(); i++) {
+            ts[i] = triangles.get(i);
+        }
+        return ts;
     }
 
     public void draw(Graphics g) {
@@ -67,6 +75,7 @@ public class Shape {
         double cx = center.getX() / triangles.size();
         double cy = center.getY() / triangles.size();
         double cz = center.getZ() / triangles.size();
+        //System.out.println(new Vertex(cx, cy, cz).toString());
         return new Vertex(cx, cy, cz);
     }
 
