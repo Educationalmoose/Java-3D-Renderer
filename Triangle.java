@@ -9,7 +9,6 @@ public class Triangle {
     double[] boundingBox = new double[4];
 
     private Color color = Color.CYAN;
-    
 
     public Triangle(Vertex v1, Vertex v2, Vertex v3) {
         this.v1 = v1;
@@ -90,6 +89,9 @@ public class Triangle {
         return -(n.getX() * x + n.getY() * y + d) / nz;
     }
 
-
+    @Override
+    public String toString() {
+        return "Triangle: " + v1.toString() + ", " + v2.toString() + ", " + v3.toString();
+    }
 
 }

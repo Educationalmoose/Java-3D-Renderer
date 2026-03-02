@@ -121,4 +121,11 @@ public class Shape {
     
         this.boundingBox = getBoundingBox();
     }
+
+    @Override
+    public String toString() {
+        StringBuilder sb = new StringBuilder();
+        sb.append("Shape with ").append(triangles.size()).append(" triangles\n");
+        return sb.toString();
+    }
 }

@@ -14,7 +14,7 @@ public class Vector {
         this.x = end.getX() - start.getX();
         this.y = end.getY() - start.getY();
         this.z = end.getZ() - start.getZ();
-        this.magnitude = Math.sqrt((this.x * this.x) + (this.y * this.y) + (this.z * this.z));
+        this.magnitude = Math.sqrt(x * x + y * y + z * z);
     }
 
     public Vector(double x, double y, double z) {
@@ -23,15 +23,25 @@ public class Vector {
         this.x = x;
         this.y = y;
         this.z = z;
-        this.magnitude = Math.sqrt((x * x) + (y * y) + (z * z));
+        this.magnitude = Math.sqrt(x * x + y * y + z * z);
 
     }
 
     public Vector crossProduct(Vector v) {
-        double i = (this.y * v.getZ()) - (this.z * v.getY());
-        double j = (this.z * v.getX()) - (this.x * v.getZ());
-        double k = (this.x * v.getY()) - (this.y * v.getX());
+        double i = (y * v.z) - (z * v.y);
+        double j = (z * v.x) - (x * v.z);
+        double k = (x * v.y) - (y * v.x);
         return new Vector(i, j, k);
+    }
+
+    public Vector normalize() {
+        if (magnitude == 0) 
+            return new Vector(0, 0, 0);
+        return new Vector(x / magnitude, y / magnitude, z / magnitude);
+    }
+
+    public double dotProduct(Vector other) {
+        return this.x * other.x + this.y * other.y + this.z * other.z;
     }
 
     public double getMagnitude() {
