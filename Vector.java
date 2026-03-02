@@ -11,19 +11,19 @@ public class Vector {
     public Vector(Vertex start, Vertex end) {
         this.start = start;
         this.end = end;
-        this.x = 0; //end.subtract(start).getX();
-        this.y = 0; //end.subtract(start).getY();
-        this.z = 0; //end.subtract(start).getZ();
+        this.x = end.getX() - start.getX();
+        this.y = end.getY() - start.getY();
+        this.z = end.getZ() - start.getZ();
         this.magnitude = Math.sqrt((this.x * this.x) + (this.y * this.y) + (this.z * this.z));
     }
 
     public Vector(double x, double y, double z) {
         this.start = new Vertex(0,0,0);
         this.end = new Vertex(x, y, z);
-        this.x = 0; //end.subtract(start).getX();
-        this.y = 0; //end.subtract(start).getY();
-        this.z = 0; //end.subtract(start).getZ();
-        this.magnitude = Math.sqrt((this.x * this.x) + (this.y * this.y) + (this.z * this.z));
+        this.x = x;
+        this.y = y;
+        this.z = z;
+        this.magnitude = Math.sqrt((x * x) + (y * y) + (z * z));
 
     }
 

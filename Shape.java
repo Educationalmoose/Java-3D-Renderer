@@ -1,4 +1,6 @@
 import java.util.ArrayList;
+import java.util.HashSet;
+import java.util.Set;
 import java.awt.Color;
 import java.awt.Graphics;
 
@@ -47,18 +49,6 @@ public class Shape {
         return ts;
     }
 
-    public void draw(Graphics g) {
-        for (Triangle triangle : triangles) {
-            triangle.draw(g);
-        }
-    }
-
-    public void drawTrail(Graphics g) {
-        for (Triangle triangle : triangles) {
-            triangle.drawTrail(g);
-        }
-    }
-
     public void drawBoundingBox(Graphics g) {
         g.setColor(Color.RED);
         g.drawLine((int)boundingBox[0], (int)boundingBox[2], (int)boundingBox[0], (int)boundingBox[3]);
@@ -80,23 +70,56 @@ public class Shape {
     }
 
     public void RotateX(double angle) {
-        for (Triangle triangle : triangles) {
-            triangle.rotateX(angle, center);
+        Set<Vertex> uniqueVertices = new HashSet<>();
+        
+        for (Triangle t : triangles) {
+            uniqueVertices.add(t.getVertices()[0]);
+            uniqueVertices.add(t.getVertices()[1]);
+            uniqueVertices.add(t.getVertices()[2]);
         }
-        boundingBox = getBoundingBox();
+
+        for (Vertex v : uniqueVertices) {
+            v.translate(-center.getX(), -center.getY(), -center.getZ());
+            v.rotateX(angle);
+            v.translate(center.getX(), center.getY(), center.getZ());
+        }
+    
+        this.boundingBox = getBoundingBox();
     }
 
     public void RotateY(double angle) {
-        for (Triangle triangle : triangles) {
-            triangle.rotateY(angle, center);
+        Set<Vertex> uniqueVertices = new HashSet<>();
+        
+        for (Triangle t : triangles) {
+            uniqueVertices.add(t.getVertices()[0]);
+            uniqueVertices.add(t.getVertices()[1]);
+            uniqueVertices.add(t.getVertices()[2]);
         }
-        boundingBox = getBoundingBox();
+
+        for (Vertex v : uniqueVertices) {
+            v.translate(-center.getX(), -center.getY(), -center.getZ());
+            v.rotateY(angle);
+            v.translate(center.getX(), center.getY(), center.getZ());
+        }
+    
+        this.boundingBox = getBoundingBox();
     }
 
     public void RotateZ(double angle) {
-        for (Triangle triangle : triangles) {
-            triangle.rotateZ(angle, center);
+        Set<Vertex> uniqueVertices = new HashSet<>();
+        
+        for (Triangle t : triangles) {
+            uniqueVertices.add(t.getVertices()[0]);
+            uniqueVertices.add(t.getVertices()[1]);
+            uniqueVertices.add(t.getVertices()[2]);
         }
-        boundingBox = getBoundingBox();
+
+        for (Vertex v : uniqueVertices) {
+            v.translate(-center.getX(), -center.getY(), -center.getZ());
+            v.rotateZ(angle);
+            v.translate(center.getX(), center.getY(), center.getZ());
+        }
+    
+        this.boundingBox = getBoundingBox();
     }
 }
