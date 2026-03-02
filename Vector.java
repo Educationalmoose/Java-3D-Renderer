@@ -9,8 +9,8 @@ public class Vector {
     private double magnitude;
 
     public Vector(Vertex start, Vertex end) {
-        this.start = start;
         this.end = end;
+        this.start = start;
         this.x = end.getX() - start.getX();
         this.y = end.getY() - start.getY();
         this.z = end.getZ() - start.getZ();

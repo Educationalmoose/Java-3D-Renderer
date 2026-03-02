@@ -1,20 +1,14 @@
 import java.awt.Color;
 import java.awt.Graphics;
-import java.util.ArrayList;
 
 public class Triangle {
     private Vertex v1;
     private Vertex v2;
     private Vertex v3;
 
-    private ArrayList<Vertex> trailv1 = new ArrayList<>();
-    private ArrayList<Vertex> trailv2 = new ArrayList<>();
-    private ArrayList<Vertex> trailv3 = new ArrayList<>();
-
     double[] boundingBox = new double[4];
 
-    private Color color = Color.GREEN;
-    private Color trailColor = Color.WHITE;
+    private Color color = Color.CYAN;
     
 
     public Triangle(Vertex v1, Vertex v2, Vertex v3) {
@@ -26,22 +20,6 @@ public class Triangle {
 
     public Vertex[] getVertices() {
         return new Vertex[]{v1, v2, v3};
-    }
-
-    public void draw(Graphics g) {
-        g.setColor(color);
-        int[] xPoints = {(int)v1.getX(), (int)v2.getX(), (int)v3.getX()};
-        int[] yPoints = {(int)v1.getY(), (int)v2.getY(), (int)v3.getY()};
-        g.fillPolygon(xPoints, yPoints, 3);
-    }
-
-    public void drawTrail(Graphics g) {
-        g.setColor(trailColor);
-        for (int i = 0; i < trailv1.size(); i++) {
-            g.drawLine((int)trailv1.get(i).getX(), (int)trailv1.get(i).getY(), (int)trailv1.get(i).getX(), (int)trailv1.get(i).getY());
-            g.drawLine((int)trailv2.get(i).getX(), (int)trailv2.get(i).getY(), (int)trailv2.get(i).getX(), (int)trailv2.get(i).getY());
-            g.drawLine((int)trailv3.get(i).getX(), (int)trailv3.get(i).getY(), (int)trailv3.get(i).getX(), (int)trailv3.get(i).getY());
-        }
     }
 
     public void drawBoundingBox(Graphics g) {
@@ -65,17 +43,6 @@ public class Triangle {
         double y = (v1.getY() + v2.getY() + v3.getY())/3;
         double z = (v1.getZ() + v2.getZ() + v3.getZ())/3;
         return new Vertex(x, y, z);
-    }
-
-    private void addTrail() {
-        if (trailv1.size() > 1000) {
-            trailv1.remove(0);
-            trailv2.remove(0);
-            trailv3.remove(0);
-        }
-        trailv1.add(new Vertex(v1.getX(), v1.getY(), v1.getZ()));
-        trailv2.add(new Vertex(v2.getX(), v2.getY(), v2.getZ()));
-        trailv3.add(new Vertex(v3.getX(), v3.getY(), v3.getZ()));
     }
 
     public boolean isInside(double x, double y) {

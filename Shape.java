@@ -65,7 +65,6 @@ public class Shape {
         double cx = center.getX() / triangles.size();
         double cy = center.getY() / triangles.size();
         double cz = center.getZ() / triangles.size();
-        //System.out.println(new Vertex(cx, cy, cz).toString());
         return new Vertex(cx, cy, cz);
     }
 

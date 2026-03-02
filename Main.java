@@ -1,18 +1,35 @@
 import javax.swing.*;
 import java.awt.*;
+import java.awt.event.ActionListener;
 import java.awt.image.BufferedImage;
 import java.util.ArrayList;
 
 public class Main extends JPanel {
     private static ArrayList<Triangle> triangles = new ArrayList<>();
     private ArrayList<Shape> shapes = new ArrayList<>();
+
+    static JFrame frame;
+
+    static JTextField xField;
+    static JTextField yField;
+    static JTextField zField;
+
+    static double xRotation = 5;
+    static double yRotation = 5;
+    static double zRotation = 5;
+
+    static double xLastRotation = 5;
+    static double yLastRotation = 5;
+    static double zLastRotation = 5;
+
+    static boolean showBoundingBox = false;
+
     public static void main(String[] args) {
         javax.swing.SwingUtilities.invokeLater(new Runnable() {
             public void run() {
                 createAndShowGUI();
             }
         });
-        
     }
 
     public void addTriangle(Triangle t) {
@@ -27,31 +44,104 @@ public class Main extends JPanel {
         super.paintComponent(g);
         int width = getWidth();
         int height = getHeight();
-        if (width <= 0 || height <= 0) return; // Safety check for window resizing
+        if (width <= 0 || height <= 0) return;
 
         BufferedImage canvas = new BufferedImage(width, height, BufferedImage.TYPE_INT_RGB);
         double[] zBuffer = new double[width * height];
         
         java.util.Arrays.fill(zBuffer, Double.MAX_VALUE);
-        for (Triangle t : triangles) {
-            t.drawBoundingBox(g);
+        if (showBoundingBox) {
+            for (Triangle t : triangles) {
+                t.drawBoundingBox(g);
+            }
         }
-
         render(triangles.toArray(new Triangle[0]), canvas, zBuffer);
 
         g.drawImage(canvas, 0, 0, null);
+        if (showBoundingBox) {
+            for (Shape s : shapes) {
+                s.drawBoundingBox(g);
+            }
+        }
     }
 
-    
-
     private static void createAndShowGUI() {
-        JFrame frame = new JFrame("3D Renderer");
+        frame = new JFrame("3D Renderer");
         Main panel = new Main();
 
-        Vertex vTLF = new Vertex(100, 100, 0);   // Top Left Front
-        Vertex vBLF = new Vertex(100, 200, 0);   // Bottom Left Front
-        Vertex vTRF = new Vertex(200, 100, 0);   // Top Right Front
-        Vertex vBRF = new Vertex(200, 200, 0);   // Bottom Right Front
+        JButton startButton = new JButton("Stop");
+
+        startButton.addActionListener(e -> {
+            if (startButton.getText().equals("Start")) {
+                startButton.setText("Stop");
+                xRotation = xLastRotation;
+                yRotation = yLastRotation;
+                zRotation = zLastRotation;
+            } else {
+                startButton.setText("Start");
+                xLastRotation = xRotation;
+                yLastRotation = yRotation;
+                zLastRotation = zRotation;
+                xRotation = 0;
+                yRotation = 0;
+                zRotation = 0;
+            }
+        });
+
+        JPanel eastWrapper = new JPanel(new BorderLayout());
+        JPanel eastPanel = new JPanel();
+        eastPanel.setLayout(new BoxLayout(eastPanel, BoxLayout.Y_AXIS));
+
+        eastWrapper.setBorder(BorderFactory.createEmptyBorder(10, 20, 10, 10));
+
+        JPanel rotationPanel = new JPanel();
+        rotationPanel.setLayout(new GridLayout(3, 2, 5, 5));
+        JLabel xLabel = new JLabel("Rotate X:");
+        JLabel yLabel = new JLabel("Rotate Y:");
+        JLabel zLabel = new JLabel("Rotate Z:");
+        xField = new JTextField("5", 2);
+        yField = new JTextField("5", 2);
+        zField = new JTextField("5", 2);
+
+        JButton setRotationButton = new JButton("Confirm");
+
+        setRotationButton.addActionListener(e -> updateRotation());
+        JCheckBox showBoundingBoxCheckBox = new JCheckBox("Show Bounding Box", false);
+        showBoundingBoxCheckBox.setSelected(Main.showBoundingBox);
+        showBoundingBoxCheckBox.setAlignmentX(Component.CENTER_ALIGNMENT);
+
+        showBoundingBoxCheckBox.addActionListener(e -> {
+            Main.showBoundingBox = showBoundingBoxCheckBox.isSelected();
+            panel.repaint();
+        });
+
+        rotationPanel.add(xLabel);
+        rotationPanel.add(xField);
+        rotationPanel.add(yLabel);
+        rotationPanel.add(yField);
+        rotationPanel.add(zLabel);
+        rotationPanel.add(zField);
+
+        startButton.setAlignmentX(Component.CENTER_ALIGNMENT);
+        rotationPanel.setAlignmentX(Component.CENTER_ALIGNMENT);
+        setRotationButton.setAlignmentX(Component.CENTER_ALIGNMENT);
+
+        eastPanel.add(startButton);
+        eastPanel.add(Box.createVerticalStrut(10));
+        eastPanel.add(rotationPanel);
+        eastPanel.add(Box.createVerticalStrut(10));
+        eastPanel.add(setRotationButton);
+        eastPanel.add(Box.createVerticalStrut(10));
+        eastPanel.add(showBoundingBoxCheckBox);
+
+        eastWrapper.add(eastPanel, BorderLayout.NORTH);
+
+        frame.add(eastWrapper, BorderLayout.EAST);
+
+        Vertex vTLF = new Vertex(100, 100, 0); // Top Left Front
+        Vertex vBLF = new Vertex(100, 200, 0); // Bottom Left Front
+        Vertex vTRF = new Vertex(200, 100, 0); // Top Right Front
+        Vertex vBRF = new Vertex(200, 200, 0); // Bottom Right Front
 
         Vertex vTLB = new Vertex(100, 100, 100); // Top Left Back
         Vertex vBLB = new Vertex(100, 200, 100); // Bottom Left Back
@@ -82,10 +172,10 @@ public class Main extends JPanel {
             triangles.add(t);
         }
 
-        Timer timer = new Timer(20, e -> {
-            cube.RotateX(1);
-            cube.RotateY(1);
-            cube.RotateZ(1);
+        Timer timer = new Timer(1, e -> {
+            cube.RotateX(xRotation / 10);
+            cube.RotateY(yRotation / 10);
+            cube.RotateZ(zRotation / 10);
             panel.repaint();
         });
         timer.start();
@@ -123,16 +213,6 @@ public class Main extends JPanel {
         }
     }
 
-    /*public int calculateColor(Color color, double z) {
-        double factor = 1.0 - (z / 200.0); 
-        factor = Math.max(0.2, Math.min(1.0, factor));
-        int r = (int)(color.getRed() * factor);
-        int g = (int)(color.getGreen() * factor);
-        int b = (int)(color.getBlue() * factor);
-
-        return new Color(r, g, b).getRGB();
-    }*/
-
     public int calculateColor(Color baseColor, double z) {
         double minZ = -150.0; // closest to camera
         double maxZ = 150.0;  // furthest from camera
@@ -148,5 +228,15 @@ public class Main extends JPanel {
         int b = (int)(baseColor.getBlue() * factor);
 
         return (new Color(r, g, b)).getRGB();
+    }
+
+    static private void updateRotation() {
+        try {
+            xRotation = Double.parseDouble(xField.getText());
+            yRotation = Double.parseDouble(yField.getText());
+            zRotation = Double.parseDouble(zField.getText()); 
+        } catch (NumberFormatException e) {
+            JOptionPane.showMessageDialog(frame, "Rotation values must be valid numbers");
+        }
     }
 }
