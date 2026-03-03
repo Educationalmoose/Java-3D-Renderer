@@ -32,6 +32,7 @@ public class Main extends JPanel {
     static boolean isPaused = true;
 
     static double scale = 1;
+    static double zoomFactor = 1.0;
     static double sensitivity = 0.25;
 
     static Vector lightDir = new Vector(0, 0, 1).normalize();
@@ -261,17 +262,15 @@ public class Main extends JPanel {
         panel.addMouseMotionListener(mouseAdapter);
 
         panel.addMouseWheelListener(e -> {
-            double notches = e.getWheelRotation();
+            double rotation = e.getPreciseWheelRotation();
             
-            double zoomFactor = (notches < 0) ? 1.1 : 0.9;
+            if (rotation == 0) return;
+
+            double zoomStep = (rotation < 0) ? 1.05 : 0.95;
             
-            Main.scale *= zoomFactor;
+            zoomFactor *= zoomStep;
             
-            for (Shape s : shapes) {
-                s.scaleBy(zoomFactor);
-            }
-            
-            scaleField.setText(String.format("%.2f", Main.scale));
+            scaleField.setText(String.format("%.2f", zoomFactor));
             
             panel.repaint();
         });
@@ -353,10 +352,10 @@ public class Main extends JPanel {
         for (Triangle t : triangles) {
             double[] bb = t.getBoundingBox();
             
-            int minX = (int) bb[0] + offsetX;
-            int maxX = (int) bb[1] + offsetX;
-            int minY = (int) bb[2] + offsetY;
-            int maxY = (int) bb[3] + offsetY;
+            int minX = (int) (bb[0] * zoomFactor) + offsetX;
+            int maxX = (int) (bb[1] * zoomFactor) + offsetX;
+            int minY = (int) (bb[2] * zoomFactor) + offsetY;
+            int maxY = (int) (bb[3] * zoomFactor) + offsetY;
 
             minX = Math.max(0, minX);
             maxX = Math.min(canvas.getWidth() - 1, maxX);
@@ -365,11 +364,11 @@ public class Main extends JPanel {
 
             for (int y = minY; y <= maxY; y++) {
                 for (int x = minX; x <= maxX; x++) {
-                    int modelX = x - offsetX;
-                    int modelY = y - offsetY;
+                    double worldX = (x - offsetX) / zoomFactor;
+                    double worldY = (y - offsetY) / zoomFactor;
 
-                    if (t.isInside(modelX, modelY)) {
-                        double currentZ = t.getZAt(modelX, modelY);
+                    if (t.isInside(worldX, worldY)) {
+                        double currentZ = t.getZAt(worldX, worldY);
                         int pixelIndex = y * canvas.getWidth() + x;
                         
                         if (currentZ < zBuffer[pixelIndex]) {
