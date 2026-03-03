@@ -45,9 +45,9 @@ public class Triangle {
     }
 
     public boolean isInside(double x, double y) {
-        double d1 = (x - this.v2.getX()) * (this.v1.getY() - this.v2.getY()) - (this.v1.getX() - this.v2.getX()) * (y - this.v2.getY());
-        double d2 = (x - this.v3.getX()) * (this.v2.getY() - this.v3.getY()) - (this.v2.getX() - this.v3.getX()) * (y - this.v3.getY());
-        double d3 = (x - this.v1.getX()) * (this.v3.getY() - this.v1.getY()) - (this.v3.getX() - this.v1.getX()) * (y - this.v1.getY());
+        double d1 = (x - this.v2.getViewX()) * (this.v1.getViewY() - this.v2.getViewY()) - (this.v1.getViewX() - this.v2.getViewX()) * (y - this.v2.getViewY());
+        double d2 = (x - this.v3.getViewX()) * (this.v2.getViewY() - this.v3.getViewY()) - (this.v2.getViewX() - this.v3.getViewX()) * (y - this.v3.getViewY());
+        double d3 = (x - this.v1.getViewX()) * (this.v3.getViewY() - this.v1.getViewY()) - (this.v3.getViewX() - this.v1.getViewX()) * (y - this.v1.getViewY());
 
         boolean has_neg = (d1 < 0) || (d2 < 0) || (d3 < 0);
         boolean has_pos = (d1 > 0) || (d2 > 0) || (d3 > 0);
@@ -56,22 +56,26 @@ public class Triangle {
     }
 
     public Vector getNormalVector() {
-        Vector A = new Vector(v2, v1);
-        Vector B = new Vector(v3, v1);
+        Vertex v1View = new Vertex(v1.getViewX(), v1.getViewY(), v1.getViewZ());
+        Vertex v2View = new Vertex(v2.getViewX(), v2.getViewY(), v2.getViewZ());
+        Vertex v3View = new Vertex(v3.getViewX(), v3.getViewY(), v3.getViewZ());
+
+        Vector A = new Vector(v2View, v1View);
+        Vector B = new Vector(v3View, v1View);
         return A.crossProduct(B);
     }
 
     public double[] getBoundingBox() {
-        double minX = v1.getX();
-        double maxX = v1.getX();
-        double minY = v1.getY();
-        double maxY = v1.getY();
+        double minX = v1.getViewX();
+        double maxX = v1.getViewX();
+        double minY = v1.getViewY();
+        double maxY = v1.getViewY();
         
         for (Vertex v : new Vertex[]{v2, v3}) {
-            if (v.getX() < minX) minX = v.getX();
-            if (v.getX() > maxX) maxX = v.getX();
-            if (v.getY() < minY) minY = v.getY();
-            if (v.getY() > maxY) maxY = v.getY();
+            if (v.getViewX() < minX) minX = v.getViewX();
+            if (v.getViewX() > maxX) maxX = v.getViewX();
+            if (v.getViewY() < minY) minY = v.getViewY();
+            if (v.getViewY() > maxY) maxY = v.getViewY();
         }
 
         return new double[]{minX, maxX, minY, maxY};
@@ -82,10 +86,10 @@ public class Triangle {
         double nz = n.getZ();
         
         if (Math.abs(nz) < 0.000001) {
-            return (v1.getZ() + v2.getZ() + v3.getZ()) / 3.0;
+            return (v1.getViewZ() + v2.getViewZ() + v3.getViewZ()) / 3.0;
         }
 
-        double d = -(n.getX() * v1.getX() + n.getY() * v1.getY() + n.getZ() * v1.getZ());
+        double d = -(n.getX() * v1.getViewX() + n.getY() * v1.getViewY() + n.getZ() * v1.getViewZ());
         return -(n.getX() * x + n.getY() * y + d) / nz;
     }
 

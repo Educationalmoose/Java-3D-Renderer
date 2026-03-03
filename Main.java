@@ -2,6 +2,8 @@ import javax.swing.*;
 import javax.swing.filechooser.FileNameExtensionFilter;
 
 import java.awt.*;
+import java.awt.event.MouseAdapter;
+import java.awt.event.MouseEvent;
 import java.awt.image.BufferedImage;
 import java.util.ArrayList;
 import java.io.File;
@@ -30,8 +32,14 @@ public class Main extends JPanel {
     static boolean isPaused = true;
 
     static double scale = 1;
+    static double sensitivity = 0.25;
 
     static Vector lightDir = new Vector(0, 0, 1).normalize();
+
+    static Point lastMousePos;
+    static double totalAngleX = 0;
+    static double totalAngleY = 0;
+    static double totalAngleZ = 0;
 
     public static void main(String[] args) {
         javax.swing.SwingUtilities.invokeLater(new Runnable() {
@@ -215,6 +223,59 @@ public class Main extends JPanel {
             }
         });
 
+        MouseAdapter mouseAdapter = new MouseAdapter() {
+            @Override
+            public void mousePressed(MouseEvent e) {
+                lastMousePos = e.getPoint();
+            }
+
+            @Override
+            public void mouseDragged(MouseEvent e) {
+                isPaused = true;
+                if (lastMousePos != null) {
+                    int dx = e.getX() - lastMousePos.x;
+                    int dy = e.getY() - lastMousePos.y;
+
+                    totalAngleX += dy * sensitivity; 
+                    totalAngleY -= dx * sensitivity;
+
+                    for (Shape s : shapes) {
+                        s.updateView(totalAngleX, totalAngleY, 0);
+                    }
+
+                    lastMousePos = e.getPoint();
+                    panel.repaint();
+                }
+            }
+
+            @Override
+            public void mouseReleased(MouseEvent e) {
+                isPaused = false;
+                xLastRotation = xRotation;
+                yLastRotation = yRotation;
+                panel.repaint();
+            }
+        };
+
+        panel.addMouseListener(mouseAdapter);
+        panel.addMouseMotionListener(mouseAdapter);
+
+        panel.addMouseWheelListener(e -> {
+            double notches = e.getWheelRotation();
+            
+            double zoomFactor = (notches < 0) ? 1.1 : 0.9;
+            
+            Main.scale *= zoomFactor;
+            
+            for (Shape s : shapes) {
+                s.scaleBy(zoomFactor);
+            }
+            
+            scaleField.setText(String.format("%.2f", Main.scale));
+            
+            panel.repaint();
+        });
+
         fileMenu.add(newItem);
         fileMenu.addSeparator();
         fileMenu.add(importObjItem);
@@ -263,14 +324,16 @@ public class Main extends JPanel {
         }
 
         
-        Timer timer = new Timer(1, e -> {
+        Timer timer = new Timer(10, e -> {
             if (!isPaused) {
+                totalAngleX += xRotation / 10.0;
+                totalAngleY += yRotation / 10.0;
+                totalAngleZ += zRotation / 10.0;
+
                 for (Shape s : shapes) {
-                    s.RotateX(xRotation / 10);
-                    s.RotateY(yRotation / 10);
-                    s.RotateZ(zRotation / 10);
-                    panel.repaint();
-                }  
+                    s.updateView(totalAngleX, totalAngleY, totalAngleZ);
+                }
+                panel.repaint();
             }
         });
         timer.start();

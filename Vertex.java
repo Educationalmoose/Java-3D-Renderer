@@ -1,9 +1,13 @@
 public class Vertex {
-    private double x, y, z;
+    private double x,y,z;
+    private double viewx, viewy, viewz;
+    
     public Vertex(double x, double y, double z) {
         this.x = x;
         this.y = y;
         this.z = z;
+        
+        resetView();
     }
 
     public void setX(double x) {
@@ -16,14 +20,35 @@ public class Vertex {
         this.z = z;
     }
 
+    public void setViewX(double x) {
+        this.viewx = x;
+    }
+    public void setViewY(double y) {
+        this.viewy = y;
+    }
+    public void setViewZ(double z) {
+        this.viewz = z;
+    }
+
+
     public double getX() {
-        return x;
+        return this.x;
     }
     public double getY() {
-        return y;
+        return this.y;
     }
     public double getZ() {
-        return z;
+        return this.z;
+    }
+
+    public double getViewX() {
+        return this.viewx;
+    }
+    public double getViewY() {
+        return this.viewy;
+    }
+    public double getViewZ() {
+        return this.viewz;
     }
 
     public void translate(double dx, double dy, double dz) {
@@ -47,7 +72,7 @@ public class Vertex {
         double sin = Math.sin(angle * Math.PI / 180);
 
         double t = this.x * cos + this.z * sin;
-        double r = this.z * cos - this.x * sin;;
+        double r = this.z * cos - this.x * sin;
         this.x = t;
         this.z = r;
     }
@@ -60,6 +85,42 @@ public class Vertex {
         double r = this.y * cos + this.x * sin;
         this.x = t;
         this.y = r;
+    }
+
+    public void rotateViewX(double angle) {
+        double cos = Math.cos(angle * Math.PI / 180);
+        double sin = Math.sin(angle * Math.PI / 180);
+
+        double t = this.viewy * cos - this.viewz * sin;
+        double r = this.viewz * cos + this.viewy * sin;
+        this.viewy = t;
+        this.viewz = r;
+    }
+
+    public void rotateViewY(double angle) {
+        double cos = Math.cos(angle * Math.PI / 180);
+        double sin = Math.sin(angle * Math.PI / 180);
+
+        double t = this.viewx * cos + this.viewz * sin;
+        double r = this.viewz * cos - this.viewx * sin;
+        this.viewx = t;
+        this.viewz = r;
+    }
+
+    public void rotateViewZ(double angle) {
+        double cos = Math.cos(angle * Math.PI / 180);
+        double sin = Math.sin(angle * Math.PI / 180);
+
+        double t = this.viewx * cos - this.viewy * sin;
+        double r = this.viewy * cos + this.viewx * sin;
+        this.viewx = t;
+        this.viewy = r;
+    }
+
+    public void resetView() {
+        this.viewx = this.x;
+        this.viewy = this.y;
+        this.viewz = this.z;
     }
 
     public void subtract(Vertex v) {

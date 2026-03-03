@@ -30,22 +30,22 @@ public class Shape {
     }
 
     public double[] getBoundingBox() {
-        double x1 = triangles.get(0).getVertices()[0].getX();
-        double x2 = triangles.get(0).getVertices()[0].getX();
-        double y1 = triangles.get(0).getVertices()[0].getY();
-        double y2 = triangles.get(0).getVertices()[0].getY();
+        double x1 = triangles.get(0).getVertices()[0].getViewX();
+        double x2 = triangles.get(0).getVertices()[0].getViewX();
+        double y1 = triangles.get(0).getVertices()[0].getViewY();
+        double y2 = triangles.get(0).getVertices()[0].getViewY();
         
         for (Triangle t : triangles) {
             for (Vertex v: t.getVertices()) {
-                if (v.getX() < x1)
-                    x1 = v.getX();
-                if (v.getX() > x2)
-                    x2 = v.getX();
+                if (v.getViewX() < x1)
+                    x1 = v.getViewX();
+                if (v.getViewX() > x2)
+                    x2 = v.getViewX();
 
-                if (v.getY() < y1)
-                    y1 = v.getY();
-                if (v.getY() > y2)
-                    y2 = v.getY();
+                if (v.getViewY() < y1)
+                    y1 = v.getViewY();
+                if (v.getViewY() > y2)
+                    y2 = v.getViewY();
             }
         }
 
@@ -137,9 +137,9 @@ public class Shape {
         Set<Vertex> uniqueVertices = new HashSet<>();
         
         for (Triangle t : triangles) {
-            uniqueVertices.add(t.getVertices()[0]);
-            uniqueVertices.add(t.getVertices()[1]);
-            uniqueVertices.add(t.getVertices()[2]);
+            for (Vertex v : t.getVertices()) {
+                uniqueVertices.add(v);
+            }
         }
 
         for (Vertex v : uniqueVertices) {
@@ -147,12 +147,33 @@ public class Shape {
             v.scale(factor);
             v.translate(center.getX(), center.getY(), center.getZ());
         }
-        this.scale = this.scale * factor;
+        this.scale *= factor;
         this.boundingBox = getBoundingBox();
     }
 
     public double getScale() {
         return this.scale;
+    }
+
+    public void updateView(double totalAngleX, double totalAngleY, double totalAngleZ) {
+        for (Triangle t : triangles) {
+            for (Vertex v : t.getVertices()) {
+                v.resetView();
+
+                v.setViewX(v.getViewX() - center.getX());
+                v.setViewY(v.getViewY() - center.getY());
+                v.setViewZ(v.getViewZ() - center.getZ());
+
+                v.rotateViewX(totalAngleX);
+                v.rotateViewY(totalAngleY);
+                v.rotateViewZ(totalAngleZ);
+
+                v.setViewX(v.getViewX() + center.getX());
+                v.setViewY(v.getViewY() + center.getY());
+                v.setViewZ(v.getViewZ() + center.getZ());
+            }
+        }
+        this.boundingBox = getBoundingBox();
     }
 
     @Override
