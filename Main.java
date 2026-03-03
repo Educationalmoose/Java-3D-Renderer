@@ -42,6 +42,9 @@ public class Main extends JPanel {
     static double totalAngleY = 0;
     static double totalAngleZ = 0;
 
+    static double panX = 0;
+    static double panY = 0;
+
     public static void main(String[] args) {
         javax.swing.SwingUtilities.invokeLater(new Runnable() {
             public void run() {
@@ -227,21 +230,30 @@ public class Main extends JPanel {
         MouseAdapter mouseAdapter = new MouseAdapter() {
             @Override
             public void mousePressed(MouseEvent e) {
-                lastMousePos = e.getPoint();
+                if (e.getButton() == MouseEvent.BUTTON1) { // Left click for rotating
+                    lastMousePos = e.getPoint();
+                } else if (e.getButton() == MouseEvent.BUTTON3) { // Right click for panning
+                    lastMousePos = e.getPoint();
+                }
             }
 
             @Override
             public void mouseDragged(MouseEvent e) {
-                isPaused = true;
                 if (lastMousePos != null) {
                     int dx = e.getX() - lastMousePos.x;
                     int dy = e.getY() - lastMousePos.y;
 
-                    totalAngleX += dy * sensitivity; 
-                    totalAngleY -= dx * sensitivity;
+                    if (javax.swing.SwingUtilities.isRightMouseButton(e)) {
+                        Main.panX += dx;
+                        Main.panY += dy;
+                    } else {
+                        double sensitivity = 0.5;
+                        totalAngleX += dy * sensitivity;
+                        totalAngleY -= dx * sensitivity;
 
-                    for (Shape s : shapes) {
-                        s.updateView(totalAngleX, totalAngleY, 0);
+                        for (Shape s : shapes) {
+                            s.updateView(totalAngleX, totalAngleY, 0);
+                        }
                     }
 
                     lastMousePos = e.getPoint();
@@ -346,8 +358,8 @@ public class Main extends JPanel {
     }
 
     public void render(Triangle[] triangles, BufferedImage canvas, double[] zBuffer) {
-        int offsetX = canvas.getWidth() / 2;
-        int offsetY = canvas.getHeight() / 2;
+        int offsetX = (canvas.getWidth() / 2) + (int)panX;
+        int offsetY = (canvas.getHeight() / 2) + (int)panY;
 
         for (Triangle t : triangles) {
             double[] bb = t.getBoundingBox();
