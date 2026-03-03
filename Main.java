@@ -240,9 +240,9 @@ protected void paintComponent(Graphics g) {
         Timer timer = new Timer(1, e -> {
             if (!isPaused) {
                 for (Shape s : shapes) {
-                    s.RotateX(xRotation / 10);
-                    s.RotateY(yRotation / 10);
-                    s.RotateZ(zRotation / 10);
+                    s.RotateX(xRotation / 100);
+                    s.RotateY(yRotation / 100);
+                    s.RotateZ(zRotation / 100);
                     panel.repaint();
                 }  
             }
@@ -329,6 +329,8 @@ protected void paintComponent(Graphics g) {
 
         ArrayList<Triangle> localTriangles = new ArrayList<>(); 
         ArrayList<Vertex> localVertices = new ArrayList<>();
+        ArrayList<Vertex> localNormalVertices = new ArrayList<>();
+        ArrayList<double[]> localTextureVertices = new ArrayList<>();
 
         try(Scanner scanner = new Scanner(object)) {
             while (scanner.hasNextLine()) {
@@ -341,9 +343,40 @@ protected void paintComponent(Graphics g) {
                     double z = Double.parseDouble(parts[3]);
 
                     localVertices.add(new Vertex(x * scale, y * scale, z * scale));
+                } else if (line.startsWith("vt ")) {
+                    // Parse vertex
+                    String[] parts = line.split("\\s+");
+                    double x = Double.parseDouble(parts[1]);
+                    double y = Double.parseDouble(parts[2]);
+
+                    localTextureVertices.add(new double[]{x * scale, y * scale});
+                } else if (line.startsWith("vn ")) {
+                    // Parse vertex
+                    String[] parts = line.split("\\s+");
+                    double x = Double.parseDouble(parts[1]);
+                    double y = Double.parseDouble(parts[2]);
+                    double z = Double.parseDouble(parts[3]);
+
+                    localNormalVertices.add(new Vertex(x * scale, y * scale, z * scale));
                 } else if (line.startsWith("f ")) {
+                    // break the line into its own sections
+                    // ex. f 3/3/5 9/9/5 7/7/5 5/5/5
+
+                    String[] parts = line.split("\\s+");
+
+                    for (String string : parts) {
+                        xindices[i] = Integer.parseInt(parts[i + 1].split(" ")[0]) - 1;                    }
+
+                    }
+                    // foreach part,
+                    // split each part into its sub parts using a / as the delimiter
+                    // parse and save each one in their own temporary lists with a size of part.length - 1
+                    // reconstruct the triangle 
+
                     String[] parts = line.split("\\s+");
                     int numVertices = parts.length - 1;
+                    for (String string : parts) {
+                        xindices[i] = Integer.parseInt(parts[i + 1].split(" ")[0]) - 1;                    }
 
                     if (numVertices >= 3) {
                         int[] indices = new int[numVertices];

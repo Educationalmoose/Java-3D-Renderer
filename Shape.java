@@ -6,6 +6,8 @@ import java.awt.Graphics;
 
 public class Shape {
     ArrayList<Triangle> triangles = new ArrayList<>();
+    ArrayList<double[]> textureVertices = new ArrayList<>();
+    ArrayList<Vertex> normalVertices = new ArrayList<>();
     Vertex center;
     double[] boundingBox = new double[4];
 
