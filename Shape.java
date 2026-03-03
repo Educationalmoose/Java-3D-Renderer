@@ -10,13 +10,22 @@ public class Shape {
     ArrayList<Vertex> normalVertices = new ArrayList<>();
     Vertex center;
     double[] boundingBox = new double[4];
+    double scale = 1.0;
 
     public Shape(Triangle[] triangles) {
         for (Triangle triangle : triangles) {
             this.triangles.add(triangle);
         }
         center = getCenter();
-        //System.out.println(center.toString());
+        boundingBox = getBoundingBox();
+    }
+
+    public Shape(Triangle[] triangles, double scale) {
+        for (Triangle triangle : triangles) {
+            this.triangles.add(triangle);
+        }
+        this.scale = scale;
+        center = getCenter();
         boundingBox = getBoundingBox();
     }
 
@@ -122,6 +131,28 @@ public class Shape {
         }
     
         this.boundingBox = getBoundingBox();
+    }
+
+    public void scaleBy(double factor) {
+        Set<Vertex> uniqueVertices = new HashSet<>();
+        
+        for (Triangle t : triangles) {
+            uniqueVertices.add(t.getVertices()[0]);
+            uniqueVertices.add(t.getVertices()[1]);
+            uniqueVertices.add(t.getVertices()[2]);
+        }
+
+        for (Vertex v : uniqueVertices) {
+            v.translate(-center.getX(), -center.getY(), -center.getZ());
+            v.scale(factor);
+            v.translate(center.getX(), center.getY(), center.getZ());
+        }
+        this.scale = this.scale * factor;
+        this.boundingBox = getBoundingBox();
+    }
+
+    public double getScale() {
+        return this.scale;
     }
 
     @Override

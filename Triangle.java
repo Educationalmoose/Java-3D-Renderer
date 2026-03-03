@@ -8,7 +8,7 @@ public class Triangle {
 
     double[] boundingBox = new double[4];
 
-    private Color color = Color.CYAN;
+    private Color color = Color.GREEN;
 
     public Triangle(Vertex v1, Vertex v2, Vertex v3) {
         this.v1 = v1;

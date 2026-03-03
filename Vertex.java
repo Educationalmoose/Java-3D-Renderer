@@ -76,6 +76,12 @@ public class Vertex {
         //return new Vertex(x, y, z);
     }
 
+    public void scale(double factor) {
+        this.x = this.x * factor;
+        this.y = this.y * factor;
+        this.z = this.z * factor;
+    }
+
     @Override
     public String toString() {
         return "(" + this.x + ", " + this.y + ", " + this.z + ")";

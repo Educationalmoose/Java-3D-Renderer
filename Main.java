@@ -29,7 +29,7 @@ public class Main extends JPanel {
     static boolean showBoundingBox = false;
     static boolean isPaused = true;
 
-    static double scale = 100;
+    static double scale = 1;
 
     static Vector lightDir = new Vector(0, 0, 1).normalize();
 
@@ -49,28 +49,28 @@ public class Main extends JPanel {
     }
 
     @Override
-protected void paintComponent(Graphics g) {
-    super.paintComponent(g);
-    int width = getWidth();
-    int height = getHeight();
-    if (width <= 0 || height <= 0) return;
+    protected void paintComponent(Graphics g) {
+        super.paintComponent(g);
+        int width = getWidth();
+        int height = getHeight();
+        if (width <= 0 || height <= 0) return;
 
-    BufferedImage canvas = new BufferedImage(width, height, BufferedImage.TYPE_INT_RGB);
-    double[] zBuffer = new double[width * height];
-    java.util.Arrays.fill(zBuffer, Double.MAX_VALUE);
-    
-    render(triangles.toArray(new Triangle[0]), canvas, zBuffer);
+        BufferedImage canvas = new BufferedImage(width, height, BufferedImage.TYPE_INT_RGB);
+        double[] zBuffer = new double[width * height];
+        java.util.Arrays.fill(zBuffer, Double.MAX_VALUE);
+        
+        render(triangles.toArray(new Triangle[0]), canvas, zBuffer);
 
-    g.drawImage(canvas, 0, 0, null);
+        g.drawImage(canvas, 0, 0, null);
 
-    if (showBoundingBox) {
-        g.translate(width / 2, height / 2);
-        for (Shape s : shapes) {
-            s.drawBoundingBox(g);
+        if (showBoundingBox) {
+            g.translate(width / 2, height / 2);
+            for (Shape s : shapes) {
+                s.drawBoundingBox(g);
+            }
+            g.translate(-width / 2, -height / 2);
         }
-        g.translate(-width / 2, -height / 2);
     }
-}
 
     private static void createAndShowGUI() {
         frame = new JFrame("3D Renderer");
@@ -124,6 +124,25 @@ protected void paintComponent(Graphics g) {
             panel.repaint();
         });
 
+        JPanel scalePanel = new JPanel();
+        scalePanel.setLayout(new GridLayout(1, 2, 5, 5));
+        JLabel scaleLabel = new JLabel("Scale:");
+        JTextField scaleField = new JTextField(Double.toString(scale), 2);
+        scalePanel.add(scaleLabel);
+        scalePanel.add(scaleField);
+
+        scaleField.addActionListener(e -> {
+            try {
+                scale = Double.parseDouble(scaleField.getText());
+                for (Shape s : shapes) {
+                    s.scaleBy(scale / s.getScale());
+                }
+                panel.repaint();
+            } catch (NumberFormatException ex) {
+                JOptionPane.showMessageDialog(frame, "Scale must be a valid number");
+            }
+        });
+
         rotationPanel.add(xLabel);
         rotationPanel.add(xField);
         rotationPanel.add(yLabel);
@@ -142,6 +161,8 @@ protected void paintComponent(Graphics g) {
         eastPanel.add(setRotationButton);
         eastPanel.add(Box.createVerticalStrut(10));
         eastPanel.add(showBoundingBoxCheckBox);
+        eastPanel.add(Box.createVerticalStrut(10));
+        eastPanel.add(scalePanel);
 
         eastWrapper.add(eastPanel, BorderLayout.NORTH);
 
@@ -156,6 +177,8 @@ protected void paintComponent(Graphics g) {
         importObjItem.setMnemonic('I');
 
         newItem.addActionListener(e -> {
+            scale = 1;
+            scaleField.setText("1.0");
             panel.removeAll();
             triangles.clear();
             shapes.clear();
@@ -180,6 +203,9 @@ protected void paintComponent(Graphics g) {
                     for (Triangle t : objShape.getTriangles()) {
                         triangles.add(t);
                     }
+
+                    scale = 1;
+                    scaleField.setText("1.0");
 
                     shapes.add(objShape);
                     panel.repaint();
@@ -240,9 +266,9 @@ protected void paintComponent(Graphics g) {
         Timer timer = new Timer(1, e -> {
             if (!isPaused) {
                 for (Shape s : shapes) {
-                    s.RotateX(xRotation / 100);
-                    s.RotateY(yRotation / 100);
-                    s.RotateZ(zRotation / 100);
+                    s.RotateX(xRotation / 10);
+                    s.RotateY(yRotation / 10);
+                    s.RotateZ(zRotation / 10);
                     panel.repaint();
                 }  
             }
@@ -342,14 +368,14 @@ protected void paintComponent(Graphics g) {
                     double y = Double.parseDouble(parts[2]);
                     double z = Double.parseDouble(parts[3]);
 
-                    localVertices.add(new Vertex(x * scale, y * scale, z * scale));
+                    localVertices.add(new Vertex(x, y, z));
                 } else if (line.startsWith("vt ")) {
                     // Parse vertex
                     String[] parts = line.split("\\s+");
                     double x = Double.parseDouble(parts[1]);
                     double y = Double.parseDouble(parts[2]);
 
-                    localTextureVertices.add(new double[]{x * scale, y * scale});
+                    localTextureVertices.add(new double[]{x, y});
                 } else if (line.startsWith("vn ")) {
                     // Parse vertex
                     String[] parts = line.split("\\s+");
@@ -357,36 +383,32 @@ protected void paintComponent(Graphics g) {
                     double y = Double.parseDouble(parts[2]);
                     double z = Double.parseDouble(parts[3]);
 
-                    localNormalVertices.add(new Vertex(x * scale, y * scale, z * scale));
+                    localNormalVertices.add(new Vertex(x, y, z));
                 } else if (line.startsWith("f ")) {
-                    // break the line into its own sections
-                    // ex. f 3/3/5 9/9/5 7/7/5 5/5/5
-
-                    String[] parts = line.split("\\s+");
-
-                    for (String string : parts) {
-                        xindices[i] = Integer.parseInt(parts[i + 1].split(" ")[0]) - 1;                    }
-
-                    }
-                    // foreach part,
-                    // split each part into its sub parts using a / as the delimiter
-                    // parse and save each one in their own temporary lists with a size of part.length - 1
-                    // reconstruct the triangle 
-
+                    // example if 3/3/5 9/9/5 7/7/5 5/5/5
+                    // break the line into parts ("f", "3/3/5", "9/9/5", "7/7/5", "5/5/5")
                     String[] parts = line.split("\\s+");
                     int numVertices = parts.length - 1;
-                    for (String string : parts) {
-                        xindices[i] = Integer.parseInt(parts[i + 1].split(" ")[0]) - 1;                    }
 
                     if (numVertices >= 3) {
-                        int[] indices = new int[numVertices];
+                        // pull just the vertex indices
+                        int[] vertexIndices = new int[numVertices];
+                        int[] textureIndices = new int[numVertices];
+                        int[] normalIndices = new int[numVertices];
                         for (int i = 0; i < numVertices; i++) {
-                            indices[i] = Integer.parseInt(parts[i + 1].split(" ")[0]) - 1;
+                            // split by / and parse
+                            String[] subParts = parts[i + 1].split("/");
+                            vertexIndices[i] = Integer.parseInt(subParts[0]) - 1;
+                            if (subParts.length == 2)
+                                textureIndices[i] = Integer.parseInt(subParts[1]) - 1;
+                            if (subParts.length == 3)
+                                normalIndices[i] = Integer.parseInt(subParts[2]) - 1;
                         }
+
                         for (int i = 1; i < numVertices - 1; i++) {
-                            Vertex v1 = localVertices.get(indices[0]);
-                            Vertex v2 = localVertices.get(indices[i]);
-                            Vertex v3 = localVertices.get(indices[i + 1]);
+                            Vertex v1 = localVertices.get(vertexIndices[0]);
+                            Vertex v2 = localVertices.get(vertexIndices[i]);
+                            Vertex v3 = localVertices.get(vertexIndices[i + 1]);
                             
                             localTriangles.add(new Triangle(v1, v2, v3));
                         }
@@ -398,6 +420,6 @@ protected void paintComponent(Graphics g) {
         }
         Triangle[] triangleArray = localTriangles.toArray(new Triangle[0]);
         triangles = localTriangles;
-        return new Shape(triangleArray);
+        return new Shape(triangleArray, scale);
     }
 }
