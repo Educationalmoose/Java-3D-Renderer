@@ -76,11 +76,9 @@ public class Main extends JPanel {
         g.drawImage(canvas, 0, 0, null);
 
         if (showBoundingBox) {
-            g.translate(width / 2, height / 2);
             for (Shape s : shapes) {
-                s.drawBoundingBox(g);
+                s.drawBoundingBox(g, zoomFactor, panX, panY, getWidth(), getHeight());
             }
-            g.translate(-width / 2, -height / 2);
         }
     }
 

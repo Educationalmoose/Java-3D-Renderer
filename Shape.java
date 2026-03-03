@@ -60,12 +60,21 @@ public class Shape {
         return ts;
     }
 
-    public void drawBoundingBox(Graphics g) {
+    public void drawBoundingBox(Graphics g, double zoom, double panX, double panY, int width, int height) {
         g.setColor(Color.RED);
-        g.drawLine((int)boundingBox[0], (int)boundingBox[2], (int)boundingBox[0], (int)boundingBox[3]);
-        g.drawLine((int)boundingBox[0], (int)boundingBox[2], (int)boundingBox[1], (int)boundingBox[2]);
-        g.drawLine((int)boundingBox[1], (int)boundingBox[2], (int)boundingBox[1], (int)boundingBox[3]);
-        g.drawLine((int)boundingBox[1], (int)boundingBox[3], (int)boundingBox[0], (int)boundingBox[3]);
+        
+        double offsetX = (width / 2.0) + panX;
+        double offsetY = (height / 2.0) + panY;
+
+        int sX1 = (int) (boundingBox[0] * zoom + offsetX);
+        int sX2 = (int) (boundingBox[1] * zoom + offsetX);
+        int sY1 = (int) (boundingBox[2] * zoom + offsetY);
+        int sY2 = (int) (boundingBox[3] * zoom + offsetY);
+
+        g.drawLine(sX1, sY1, sX1, sY2);
+        g.drawLine(sX1, sY1, sX2, sY1);
+        g.drawLine(sX2, sY1, sX2, sY2);
+        g.drawLine(sX1, sY2, sX2, sY2);
     }
 
     public Vertex getCenter() {
