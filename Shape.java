@@ -52,6 +52,63 @@ public class Shape {
         return new double[]{x1, x2, y1, y2};
     }
 
+    public double[] getLocalSelectionBox() {
+        
+
+
+        double x1 = triangles.get(0).getVertices()[0].getViewX();
+        double x2 = triangles.get(0).getVertices()[0].getViewX();
+        double y1 = triangles.get(0).getVertices()[0].getViewY();
+        double y2 = triangles.get(0).getVertices()[0].getViewY();
+        double z1 = triangles.get(0).getVertices()[0].getViewZ();
+        double z2 = triangles.get(0).getVertices()[0].getViewZ();
+
+        
+        for (Triangle t : triangles) {
+            for (Vertex v: t.getVertices()) {
+                if (v.getViewX() < x1)
+                    x1 = v.getViewX();
+                if (v.getViewX() > x2)
+                    x2 = v.getViewX();
+
+                if (v.getViewY() < y1)
+                    y1 = v.getViewY();
+                if (v.getViewY() > y2)
+                    y2 = v.getViewY();
+
+                if (v.getViewZ() < z1)
+                    z1 = v.getViewZ();
+                if (v.getViewZ() > z2)
+                    z2 = v.getViewZ();
+            }
+        }
+
+        return new double[]{x1, x2, y1, y2, z1, z2};
+    }
+
+    /*public double[] getGlobalSelectionBox() {
+        double x1 = triangles.get(0).getVertices()[0].getViewX();
+        double x2 = triangles.get(0).getVertices()[0].getViewX();
+        double y1 = triangles.get(0).getVertices()[0].getViewY();
+        double y2 = triangles.get(0).getVertices()[0].getViewY();
+        
+        for (Triangle t : triangles) {
+            for (Vertex v: t.getVertices()) {
+                if (v.getViewX() < x1)
+                    x1 = v.getViewX();
+                if (v.getViewX() > x2)
+                    x2 = v.getViewX();
+
+                if (v.getViewY() < y1)
+                    y1 = v.getViewY();
+                if (v.getViewY() > y2)
+                    y2 = v.getViewY();
+            }
+        }
+
+        return new double[]{x1, x2, y1, y2};
+    } */
+
     public Triangle[] getTriangles() {
         Triangle[] ts = new Triangle[triangles.size()];
         for(int i = 0; i < triangles.size(); i++) {
@@ -76,6 +133,47 @@ public class Shape {
         g.drawLine(sX2, sY1, sX2, sY2);
         g.drawLine(sX1, sY2, sX2, sY2);
     }
+
+    public void drawLocalSelectionBox(Graphics g, double zoom, double panX, double panY, int width, int height) {
+        g.setColor(Color.RED);
+        
+        double offsetX = (width / 2.0) + panX;
+        double offsetY = (height / 2.0) + panY;
+        double offsetZ = ((width + height) / 4.0) + (panX + panY)/2;
+
+
+        int sX1 = (int) (boundingBox[0] * zoom + offsetX);
+        int sX2 = (int) (boundingBox[1] * zoom + offsetX);
+        int sY1 = (int) (boundingBox[2] * zoom + offsetY);
+        int sY2 = (int) (boundingBox[3] * zoom + offsetY);
+        int sZ1 = (int) (boundingBox[4] * zoom + offsetZ);
+        int sZ2 = (int) (boundingBox[5] * zoom + offsetZ);
+
+        g.drawLine(sX1, sY1, sX1, sY2);
+        g.drawLine(sX1, sY1, sX2, sY1);
+        g.drawLine(sX2, sY1, sX2, sY2);
+        g.drawLine(sX1, sY2, sX2, sY2);
+        g.drawLine(sX1, sZ1, sX2, sZ2);
+    }
+
+    /*public void drawGlobalSelectionBox(Graphics g, double zoom, double panX, double panY, int width, int height) {
+        g.setColor(Color.RED);
+        
+        double offsetX = (width / 2.0) + panX;
+        double offsetY = (height / 2.0) + panY;
+
+        int sX1 = (int) (boundingBox[0] * zoom + offsetX);
+        int sX2 = (int) (boundingBox[1] * zoom + offsetX);
+        int sY1 = (int) (boundingBox[2] * zoom + offsetY);
+        int sY2 = (int) (boundingBox[3] * zoom + offsetY);
+        int sZ1 = (int) (boundingBox[2] * zoom + offsetY);
+        int sZ2 = (int) (boundingBox[3] * zoom + offsetY);
+
+        g.drawLine(sX1, sY1, sX1, sY2);
+        g.drawLine(sX1, sY1, sX2, sY1);
+        g.drawLine(sX2, sY1, sX2, sY2);
+        g.drawLine(sX1, sY2, sX2, sY2);
+    } */
 
     public Vertex getCenter() {
         Vertex center = new Vertex(0, 0, 0);
@@ -183,6 +281,16 @@ public class Shape {
             }
         }
         this.boundingBox = getBoundingBox();
+    }
+
+    public double getZAt(double x, double y) {
+        double closestZ = triangles.get(0).getZAt(x, y);
+        for (Triangle t : triangles) {
+            if (t.getZAt(x, y) < closestZ) {
+                closestZ = t.getZAt(x, y);
+            }
+        }
+        return closestZ;
     }
 
     @Override

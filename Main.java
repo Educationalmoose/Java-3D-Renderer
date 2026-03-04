@@ -20,15 +20,16 @@ public class Main extends JPanel {
     static JTextField yField;
     static JTextField zField;
 
+    static ScrubbableField xFieldLight;
+    static ScrubbableField yFieldLight;
+    static ScrubbableField zFieldLight;
+
     static double xRotation = 0;
     static double yRotation = 0;
     static double zRotation = 0;
 
-    static double xLastRotation = 0;
-    static double yLastRotation = 0;
-    static double zLastRotation = 0;
-
     static boolean showBoundingBox = false;
+    static boolean showGrid = true;
     static boolean isPaused = true;
 
     static double scale = 1;
@@ -44,6 +45,8 @@ public class Main extends JPanel {
 
     static double panX = 0;
     static double panY = 0;
+
+    static Shape selectedShape;
 
     public static void main(String[] args) {
         javax.swing.SwingUtilities.invokeLater(new Runnable() {
@@ -89,21 +92,12 @@ public class Main extends JPanel {
         JButton startButton = new JButton("Start");
 
         startButton.addActionListener(e -> {
-            if (startButton.getText().equals("Start")) {
-                startButton.setText("Stop");
+            if (isPaused) {
+                startButton.setText("Resume");
                 isPaused = false;
-                xRotation = xLastRotation;
-                yRotation = yLastRotation;
-                zRotation = zLastRotation;
             } else {
-                startButton.setText("Start");
+                startButton.setText("Paused");
                 isPaused = true;
-                xLastRotation = xRotation;
-                yLastRotation = yRotation;
-                zLastRotation = zRotation;
-                xRotation = 0;
-                yRotation = 0;
-                zRotation = 0;
             }
         });
 
@@ -122,6 +116,13 @@ public class Main extends JPanel {
         yField = new JTextField("0", 2);
         zField = new JTextField("0", 2);
 
+        rotationPanel.add(xLabel);
+        rotationPanel.add(xField);
+        rotationPanel.add(yLabel);
+        rotationPanel.add(yField);
+        rotationPanel.add(zLabel);
+        rotationPanel.add(zField);
+
         JButton setRotationButton = new JButton("Confirm");
 
         setRotationButton.addActionListener(e -> updateRotation());
@@ -129,8 +130,17 @@ public class Main extends JPanel {
         showBoundingBoxCheckBox.setSelected(Main.showBoundingBox);
         showBoundingBoxCheckBox.setAlignmentX(Component.CENTER_ALIGNMENT);
 
+        JCheckBox showGridCheckBox = new JCheckBox("Show Grid", false);
+        showGridCheckBox.setSelected(Main.showGrid);
+        showGridCheckBox.setAlignmentX(Component.CENTER_ALIGNMENT);
+
         showBoundingBoxCheckBox.addActionListener(e -> {
             Main.showBoundingBox = showBoundingBoxCheckBox.isSelected();
+            panel.repaint();
+        });
+
+        showGridCheckBox.addActionListener(e -> {
+            Main.showGrid = showGridCheckBox.isSelected();
             panel.repaint();
         });
 
@@ -153,26 +163,77 @@ public class Main extends JPanel {
             }
         });
 
-        rotationPanel.add(xLabel);
-        rotationPanel.add(xField);
-        rotationPanel.add(yLabel);
-        rotationPanel.add(yField);
-        rotationPanel.add(zLabel);
-        rotationPanel.add(zField);
+        JPanel lightPanel = new JPanel();
+        lightPanel.setLayout(new BoxLayout(lightPanel, BoxLayout.Y_AXIS));
+        JPanel lightVectorGrid = new JPanel();
+        lightVectorGrid.setLayout(new GridLayout(3, 2, 5, 5));
+
+        JLabel lightPanelLabel = new JLabel("Light");
+        JLabel xLabelLight = new JLabel("X:");
+        xLabelLight.setAlignmentX(Component.RIGHT_ALIGNMENT);
+        JLabel yLabelLight = new JLabel("Y:");
+        JLabel zLabelLight = new JLabel("Z:");
+        xFieldLight = new ScrubbableField(0.0, -1.0, 1.0, 0.01);
+        xFieldLight.setOnValueChange(val -> {
+            double x = val;
+            double y = Double.parseDouble(yFieldLight.getText());
+            double z = Double.parseDouble(zFieldLight.getText());
+            Main.lightDir = new Vector(x, y, z).normalize();
+            
+            panel.repaint();
+        });
+        yFieldLight = new ScrubbableField(0.0, -1.0, 1.0, 0.01);
+        yFieldLight.setOnValueChange(val -> {
+            double x = Double.parseDouble(xFieldLight.getText());
+            double y = val;
+            double z = Double.parseDouble(zFieldLight.getText());
+            Main.lightDir = new Vector(x, y, z).normalize();
+            
+            panel.repaint();
+        });
+        zFieldLight = new ScrubbableField(1.0, -1.0, 1.0, 0.01);
+        zFieldLight.setOnValueChange(val -> {
+            double x = Double.parseDouble(xFieldLight.getText());
+            double y = Double.parseDouble(yFieldLight.getText());
+            double z = val;
+            Main.lightDir = new Vector(x, y, z).normalize();
+            
+            panel.repaint();
+        });
+
+        lightVectorGrid.add(xLabelLight);
+        lightVectorGrid.add(xFieldLight);
+        lightVectorGrid.add(yLabelLight);
+        lightVectorGrid.add(yFieldLight);
+        lightVectorGrid.add(zLabelLight);
+        lightVectorGrid.add(zFieldLight);
+
+        lightPanelLabel.setAlignmentX(Component.CENTER_ALIGNMENT);
+        lightVectorGrid.setAlignmentX(Component.CENTER_ALIGNMENT);
+
+        lightPanel.add(lightPanelLabel);
+        lightPanel.add(lightVectorGrid);
+        
 
         startButton.setAlignmentX(Component.CENTER_ALIGNMENT);
         rotationPanel.setAlignmentX(Component.CENTER_ALIGNMENT);
         setRotationButton.setAlignmentX(Component.CENTER_ALIGNMENT);
+        lightPanel.setAlignmentX(Component.CENTER_ALIGNMENT);
+
 
         eastPanel.add(startButton);
         eastPanel.add(Box.createVerticalStrut(10));
         eastPanel.add(rotationPanel);
         eastPanel.add(Box.createVerticalStrut(10));
         eastPanel.add(setRotationButton);
-        eastPanel.add(Box.createVerticalStrut(10));
+        eastPanel.add(Box.createVerticalStrut(20));
         eastPanel.add(showBoundingBoxCheckBox);
         eastPanel.add(Box.createVerticalStrut(10));
+        eastPanel.add(showGridCheckBox);
+        eastPanel.add(Box.createVerticalStrut(20));
         eastPanel.add(scalePanel);
+        eastPanel.add(Box.createVerticalStrut(20));
+        eastPanel.add(lightPanel);
 
         eastWrapper.add(eastPanel, BorderLayout.NORTH);
 
@@ -189,6 +250,12 @@ public class Main extends JPanel {
         newItem.addActionListener(e -> {
             scale = 1;
             scaleField.setText("1.0");
+            totalAngleX = 0;
+            totalAngleY = 0;
+            totalAngleZ = 0;
+
+            panX = 0;
+            panY = 0;
             panel.removeAll();
             triangles.clear();
             shapes.clear();
@@ -217,6 +284,13 @@ public class Main extends JPanel {
                     scale = 1;
                     scaleField.setText("1.0");
 
+                    totalAngleX = 0;
+                    totalAngleY = 0;
+                    totalAngleZ = 0;
+
+                    panX = 0;
+                    panY = 0;
+
                     shapes.add(objShape);
                     panel.repaint();
                 } else {
@@ -230,6 +304,13 @@ public class Main extends JPanel {
             public void mousePressed(MouseEvent e) {
                 if (e.getButton() == MouseEvent.BUTTON1) { // Left click for rotating
                     lastMousePos = e.getPoint();
+                    selectedShape = getObjectAt(lastMousePos.x, lastMousePos.y);
+                    if (selectedShape == null) 
+                        clearSelectedShape();
+                    else {
+                        //shape.drawLocalSelectionBox();
+                        //drawMovementArrows()
+                    }
                 } else if (e.getButton() == MouseEvent.BUTTON3) { // Right click for panning
                     lastMousePos = e.getPoint();
                 }
@@ -262,8 +343,6 @@ public class Main extends JPanel {
             @Override
             public void mouseReleased(MouseEvent e) {
                 isPaused = false;
-                xLastRotation = xRotation;
-                yLastRotation = yRotation;
                 panel.repaint();
             }
         };
@@ -284,6 +363,7 @@ public class Main extends JPanel {
             
             panel.repaint();
         });
+   
 
         fileMenu.add(newItem);
         fileMenu.addSeparator();
@@ -359,6 +439,9 @@ public class Main extends JPanel {
         int offsetX = (canvas.getWidth() / 2) + (int)panX;
         int offsetY = (canvas.getHeight() / 2) + (int)panY;
 
+        if (showGrid)
+            drawGridIntoCanvas(canvas, zBuffer, offsetX, offsetY);
+
         for (Triangle t : triangles) {
             double[] bb = t.getBoundingBox();
             
@@ -414,9 +497,12 @@ public class Main extends JPanel {
 
     static private void updateRotation() {
         try {
-            xRotation = Double.parseDouble(xField.getText());
-            yRotation = Double.parseDouble(yField.getText());
-            zRotation = Double.parseDouble(zField.getText()); 
+            if (!isPaused) {
+                xRotation = Double.parseDouble(xField.getText());
+                yRotation = Double.parseDouble(yField.getText());
+                zRotation = Double.parseDouble(zField.getText()); 
+            }
+            
         } catch (NumberFormatException e) {
             JOptionPane.showMessageDialog(frame, "Rotation values must be valid numbers");
         }
@@ -494,4 +580,101 @@ public class Main extends JPanel {
         triangles = localTriangles;
         return new Shape(triangleArray, scale);
     }
+
+    private void drawGridIntoCanvas(BufferedImage canvas, double[] zBuffer, int offX, int offY) {
+        int gridSize = 10; 
+        int spacing = 50;  
+        int limit = gridSize * spacing;
+        int gridColor = new Color(100, 100, 100).getRGB();
+
+        for (int i = -gridSize; i <= gridSize; i++) {
+            int pos = i * spacing;
+            draw3DLine(canvas, zBuffer, pos, 0, -limit, pos, 0, limit, offX, offY, gridColor);
+            draw3DLine(canvas, zBuffer, -limit, 0, pos, limit, 0, pos, offX, offY, gridColor);
+        }
+    }
+
+    private void draw3DLine(BufferedImage canvas, double[] zBuffer, double x1, double y1, double z1, double x2, double y2, double z2, int offX, int offY, int color) {
+        Vertex v1 = new Vertex(x1, y1, z1);
+        Vertex v2 = new Vertex(x2, y2, z2);
+        
+        v1.rotateViewX(totalAngleX);
+        v1.rotateViewY(totalAngleY);
+        v2.rotateViewX(totalAngleX);
+        v2.rotateViewY(totalAngleY);
+
+        double sx1 = v1.getViewX() + offX;
+        double sy1 = v1.getViewY() + offY;
+        double sz1 = v1.getViewZ();
+
+        double sx2 = v2.getViewX() + offX;
+        double sy2 = v2.getViewY() + offY;
+        double sz2 = v2.getViewZ();
+
+        double dx = sx2 - sx1;
+        double dy = sy2 - sy1;
+        double dz = sz2 - sz1;
+        double steps = Math.max(Math.abs(dx), Math.abs(dy));
+
+        if (steps == 0) return;
+
+        double xInc = dx / steps;
+        double yInc = dy / steps;
+        double zInc = dz / steps;
+
+        double cx = sx1;
+        double cy = sy1;
+        double cz = sz1;
+
+        for (int i = 0; i <= steps; i++) {
+            int ix = (int) Math.round(cx);
+            int iy = (int) Math.round(cy);
+
+            if (ix >= 0 && ix < canvas.getWidth() && iy >= 0 && iy < canvas.getHeight()) {
+                int index = iy * canvas.getWidth() + ix;
+                if (cz < zBuffer[index]) {
+                    zBuffer[index] = cz;
+                    canvas.setRGB(ix, iy, color);
+                }
+            }
+            cx += xInc;
+            cy += yInc;
+            cz += zInc;
+        }
+    }
+
+    private static Shape getObjectAt(double x, double y) {
+        Shape[] localShapes = new Shape[shapes.size()];
+        int index = 0;
+        for (Shape shape : shapes) {
+            for (Triangle t : shape.getTriangles()) {
+                if (t.isInside(x, y)) {
+                    localShapes[index] = shape;
+                    index++;
+                }
+            }
+        }
+        if (localShapes.length == 1) {
+            return localShapes[0];
+        }
+        else if (localShapes.length > 1) {
+            double closestZ = localShapes[0].getZAt(x, y);
+            Shape closestShape = localShapes[0];
+            for (Shape s : localShapes) {
+                if (s.getZAt(x, y) > closestZ) {
+                    closestZ = s.getZAt(x, y);
+                    closestShape = s;
+                }
+            }
+            return closestShape;
+        }
+        else {
+            return null;
+        }
+    }
+
+    private static void clearSelectedShape() {
+        selectedShape = null;
+    }
+
 }
