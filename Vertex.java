@@ -1,6 +1,10 @@
 public class Vertex {
     private double x,y,z;
     private double viewx, viewy, viewz;
+
+    // Projected screen coords. In orthographic mode these equal viewx/viewy.
+    // In perspective mode these are the perspective divided screen coords.
+    private double projx, projy;
     
     public Vertex(double x, double y, double z) {
         this.x = x;
@@ -50,6 +54,11 @@ public class Vertex {
     public double getViewZ() {
         return this.viewz;
     }
+
+    public double getProjX() { return this.projx; }
+    public double getProjY() { return this.projy; }
+    public void setProjX(double x) { this.projx = x; }
+    public void setProjY(double y) { this.projy = y; }
 
     public void translate(double dx, double dy, double dz) {
         this.x += dx;
@@ -121,6 +130,10 @@ public class Vertex {
         this.viewx = this.x;
         this.viewy = this.y;
         this.viewz = this.z;
+
+        // default projected coords = world coords (orthographic)
+        this.projx = this.x;
+        this.projy = this.y;
     }
 
     public void subtract(Vertex v) {

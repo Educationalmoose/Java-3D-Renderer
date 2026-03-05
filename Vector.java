@@ -57,4 +57,34 @@ public class Vector {
     public double getZ() {
         return this.z;
     }
+
+    public void rotateX(double angle) {
+    double rad = Math.toRadians(angle);
+    double cos = Math.cos(rad);
+    double sin = Math.sin(rad);
+    double newY = y * cos - z * sin;
+    double newZ = y * sin + z * cos;
+    this.y = newY;
+    this.z = newZ;
+}
+
+    public void rotateY(double angle) {
+        double rad = Math.toRadians(angle);
+        double cos = Math.cos(rad);
+        double sin = Math.sin(rad);
+        double newX = x * cos + z * sin;
+        double newZ = -x * sin + z * cos;
+        this.x = newX;
+        this.z = newZ;
+    }
+
+    public void rotateZ(double angle) {
+        double rad = Math.toRadians(angle);
+        double cos = Math.cos(rad);
+        double sin = Math.sin(rad);
+        double newX = x * cos - y * sin;
+        double newY = x * sin + y * cos;
+        this.x = newX;
+        this.y = newY;
+    }
 }
