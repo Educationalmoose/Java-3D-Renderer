@@ -4,14 +4,14 @@ import javax.swing.filechooser.FileNameExtensionFilter;
 import java.awt.*;
 import java.awt.event.MouseAdapter;
 import java.awt.event.MouseEvent;
+import java.awt.image.BufferStrategy;
 import java.awt.image.BufferedImage;
 import java.util.ArrayList;
 import java.io.File;
 import java.io.FileNotFoundException;
 import java.util.Scanner;
 
-public class Main extends JPanel {
-    private static ArrayList<Triangle> triangles = new ArrayList<>();
+public class Main extends Canvas implements Runnable {
     private static ArrayList<Shape> shapes = new ArrayList<>();
 
     static JFrame frame;
@@ -38,12 +38,12 @@ public class Main extends JPanel {
     static boolean showSelectionBox = false;
     static boolean isPaused = true;
     static boolean perspectiveMode = false;
-    static double focalLength = 500.0;
+    static double focalLength = 1000.0;
 
     static double scale = 1;
     static double zoomFactor = 1.0;
-    static double sensitivity = 0.25;
-    static double flySpeed = 5.0;
+    static double sensitivity = 0.1;
+    static double flySpeed = 2.0;
     static double accelerationSpeed = 1.0;
 
     static Vector lightDir = new Vector(0, 0, 1).normalize();
@@ -63,8 +63,12 @@ public class Main extends JPanel {
     static java.util.Set<Integer> pressedKeys = new java.util.HashSet<>();
 
     static Shape selectedShape;
-
     static Point pressPoint;
+
+    private Thread thread;
+    private boolean running = false;
+    private int currentFPS = 0;
+    private double currentFrameTimeMs = 0;
 
     public static void main(String[] args) {
         javax.swing.SwingUtilities.invokeLater(new Runnable() {
@@ -74,31 +78,110 @@ public class Main extends JPanel {
         });
     }
 
-    public void addTriangle(Triangle t) {
-        triangles.add(t);
+    public synchronized void start() {
+        if (running) return;
+        running = true;
+        thread = new Thread(this, "RenderThread");
+        thread.start();
     }
-    public void addShape(Shape s) {
-        shapes.add(s);
+
+    public synchronized void stop() {
+        if (!running) return;
+        running = false;
+        try {
+            thread.join();
+        } catch (InterruptedException e) {
+            e.printStackTrace();
+        }
     }
 
     @Override
-    protected void paintComponent(Graphics g) {
-        super.paintComponent(g);
+    public void run() {
+        long lastTime = System.nanoTime();
+        long timer = System.currentTimeMillis();
+        int frames = 0;
+
+        while (running) {
+            long now = System.nanoTime();
+            currentFrameTimeMs = (now - lastTime) / 1_000_000.0;
+            lastTime = now;
+
+            update();
+            render();
+
+            frames++;
+
+            if (System.currentTimeMillis() - timer > 1000) {
+                timer += 1000;
+                currentFPS = frames;
+                frames = 0;
+            }
+        }
+        stop();
+    }
+
+    private void update() {
+        if (!pressedKeys.isEmpty()) {
+            double[] fwd = localToWorld(0,  0,  1);
+            double[] right = localToWorld(1,  0,  0);
+            double[] up = localToWorld(0, -1,  0);
+
+            double spd = flySpeed * accelerationSpeed;
+            boolean accelerating = pressedKeys.contains(java.awt.event.KeyEvent.VK_SHIFT);
+
+            if (pressedKeys.contains(java.awt.event.KeyEvent.VK_A)) { camX -= right[0]*spd; camY -= right[1]*spd; camZ -= right[2]*spd; }
+            if (pressedKeys.contains(java.awt.event.KeyEvent.VK_D)) { camX += right[0]*spd; camY += right[1]*spd; camZ += right[2]*spd; }
+            if (perspectiveMode) {
+                if (pressedKeys.contains(java.awt.event.KeyEvent.VK_W)) { camX += fwd[0]*spd; camY += fwd[1]*spd; camZ += fwd[2]*spd; }
+                if (pressedKeys.contains(java.awt.event.KeyEvent.VK_S)) { camX -= fwd[0]*spd; camY -= fwd[1]*spd; camZ -= fwd[2]*spd; }
+                if (pressedKeys.contains(java.awt.event.KeyEvent.VK_SPACE)) { camX += up[0]*spd; camY += up[1]*spd; camZ += up[2]*spd; }
+                if (pressedKeys.contains(java.awt.event.KeyEvent.VK_CONTROL)) { camX -= up[0]*spd; camY -= up[1]*spd; camZ -= up[2]*spd; }
+            }
+            
+            if (!accelerating) {
+                accelerationSpeed = 1.0;
+            } else {
+                accelerationSpeed = Math.min(accelerationSpeed + 0.01, 2.0);
+            }
+        }
+
+        synchronized(shapes) {
+            for (Shape s : shapes) {
+                s.updateView(totalAngleX, totalAngleY, totalAngleZ, perspectiveMode, focalLength, camX, camY, camZ);
+            }
+        }
+    }
+
+    private void render() {
+        BufferStrategy bs = getBufferStrategy();
+        if (bs == null) {
+            createBufferStrategy(3);
+            return;
+        }
+
+        Graphics g = bs.getDrawGraphics();
         int width = getWidth();
         int height = getHeight();
-        if (width <= 0 || height <= 0) return;
+        if (width <= 0 || height <= 0) {
+            g.dispose();
+            bs.show();
+            return;
+        }
+
+        g.setColor(Color.BLACK);
+        g.fillRect(0, 0, width, height);
 
         BufferedImage canvas = new BufferedImage(width, height, BufferedImage.TYPE_INT_RGB);
         double[] zBuffer = new double[width * height];
         java.util.Arrays.fill(zBuffer, Double.MAX_VALUE);
         
-        render(triangles.toArray(new Triangle[0]), canvas, zBuffer);
+        renderScene(shapes.toArray(new Shape[0]), canvas, zBuffer);
 
         g.drawImage(canvas, 0, 0, null);
 
         if (showBoundingBox) {
             Graphics2D g2 = (Graphics2D) g.create();
-            g2.translate(getWidth() / 2.0, getHeight() / 2.0);
+            g2.translate(width / 2.0, height / 2.0);
             g2.scale(zoomFactor, zoomFactor);
             g2.setStroke(new BasicStroke((float)(1.0 / zoomFactor)));
             for (Shape s : shapes) {
@@ -110,18 +193,31 @@ public class Main extends JPanel {
         if (selectedShape != null) {
             Graphics2D g2 = (Graphics2D) g.create();
             g2.setRenderingHint(RenderingHints.KEY_ANTIALIASING, RenderingHints.VALUE_ANTIALIAS_ON);
-            g2.translate(getWidth() / 2.0, getHeight() / 2.0);
+            g2.translate(width / 2.0, height / 2.0);
             g2.scale(zoomFactor, zoomFactor);
             g2.setStroke(new BasicStroke((float)(2.0 / zoomFactor)));
             selectedShape.drawLocalSelectionBox(g2);
-            selectedShape.drawTranslationGizmo(g2, totalAngleX, totalAngleY, totalAngleZ, zoomFactor, perspectiveMode, focalLength);
+            selectedShape.drawTranslationGizmo(g2, totalAngleX, totalAngleY, totalAngleZ, zoomFactor, perspectiveMode, focalLength, camX, camY, camZ);
             g2.dispose();
         }
+
+        g.setColor(Color.YELLOW);
+        g.setFont(new Font("Monospaced", Font.BOLD, 16));
+        g.drawString("FPS: " + currentFPS, 10, 20);
+        g.drawString(String.format("Frame Time: %.2f ms", currentFrameTimeMs), 10, 40);
+
+        g.dispose();
+        bs.show();
+    }
+    public void addShape(Shape s) {
+        shapes.add(s);
     }
 
     private static void createAndShowGUI() {
         frame = new JFrame("3D Renderer");
         Main panel = new Main();
+
+        panel.setPreferredSize(new Dimension(900, 900));
 
         JPanel eastWrapper = new JPanel(new BorderLayout());
         JPanel eastPanel = new JPanel();
@@ -141,20 +237,10 @@ public class Main extends JPanel {
         showWireframeCheckBox.setSelected(Main.wireframeMode);
         showWireframeCheckBox.setAlignmentX(Component.CENTER_ALIGNMENT);
 
-        showBoundingBoxCheckBox.addActionListener(e -> {
-            Main.showBoundingBox = showBoundingBoxCheckBox.isSelected();
-            panel.repaint();
-        });
 
-        showGridCheckBox.addActionListener(e -> {
-            Main.showGrid = showGridCheckBox.isSelected();
-            panel.repaint();
-        });
-
-        showWireframeCheckBox.addActionListener(e -> {
-            Main.wireframeMode = showWireframeCheckBox.isSelected();
-            panel.repaint();
-        });
+        showBoundingBoxCheckBox.addActionListener(e -> Main.showBoundingBox = showBoundingBoxCheckBox.isSelected());
+        showGridCheckBox.addActionListener(e -> Main.showGrid = showGridCheckBox.isSelected());
+        showWireframeCheckBox.addActionListener(e -> Main.wireframeMode = showWireframeCheckBox.isSelected());
 
         JCheckBox perspectiveCheckBox = new JCheckBox("Perspective", false);
         perspectiveCheckBox.setAlignmentX(Component.CENTER_ALIGNMENT);
@@ -170,31 +256,11 @@ public class Main extends JPanel {
         perspectiveCheckBox.addActionListener(e -> {
             Main.perspectiveMode = perspectiveCheckBox.isSelected();
             fovPanel.setVisible(Main.perspectiveMode);
-            if (Main.perspectiveMode) {
-                // Pull the camera straight back along world -Z so it's not at the origin
-                // on top of the scene objects. Do NOT reset angles — that causes a sudden
-                // jarring snap in the view which felt like "distortion".
-                camX = 0;
-                camY = 0;
-                camZ = -150; // close to scene — avoids the "orbiting" feel from being far away
-            } else {
-                camX = 0;
-                camY = 0;
-                camZ = 0;
-            }
-            for (Shape s : shapes) {
-                s.updateView(totalAngleX, totalAngleY, totalAngleZ, perspectiveMode, focalLength, camX, camY, camZ);
-            }
-            panel.repaint();
         });
 
         fovField.addActionListener(e -> {
             try {
                 Main.focalLength = Double.parseDouble(fovField.getText());
-                for (Shape s : shapes) {
-                    s.updateView(totalAngleX, totalAngleY, totalAngleZ, perspectiveMode, focalLength, camX, camY, camZ);
-                }
-                panel.repaint();
             } catch (NumberFormatException ex) {
                 JOptionPane.showMessageDialog(frame, "Focal length must be a valid number");
             }
@@ -213,7 +279,6 @@ public class Main extends JPanel {
                 for (Shape s : shapes) {
                     s.scaleBy(scale / s.getScale());
                 }
-                panel.repaint();
             } catch (NumberFormatException ex) {
                 JOptionPane.showMessageDialog(frame, "Scale must be a valid number");
             }
@@ -230,38 +295,26 @@ public class Main extends JPanel {
         JLabel zLabelLight = new JLabel("Z:");
         xFieldLight = new ScrubbableField(0.0, -1.0, 1.0, 0.005);
         xFieldLight.setOnValueChange(val -> {
-            double x = val;
             double y = Double.parseDouble(yFieldLight.getText());
             double z = Double.parseDouble(zFieldLight.getText());
-            Main.lightDir = new Vector(x, y, z).normalize();
-            
-            panel.repaint();
+            Main.lightDir = new Vector(val, y, z).normalize();
         });
         yFieldLight = new ScrubbableField(0.0, -1.0, 1.0, 0.005);
         yFieldLight.setOnValueChange(val -> {
             double x = Double.parseDouble(xFieldLight.getText());
-            double y = val;
             double z = Double.parseDouble(zFieldLight.getText());
-            Main.lightDir = new Vector(x, y, z).normalize();
-            
-            panel.repaint();
+            Main.lightDir = new Vector(x, val, z).normalize();
         });
         zFieldLight = new ScrubbableField(1.0, -1.0, 1.0, 0.005);
         zFieldLight.setOnValueChange(val -> {
             double x = Double.parseDouble(xFieldLight.getText());
             double y = Double.parseDouble(yFieldLight.getText());
-            double z = val;
-            Main.lightDir = new Vector(x, y, z).normalize();
-            
-            panel.repaint();
+            Main.lightDir = new Vector(x, y, val).normalize();
         });
 
-        lightVectorGrid.add(xLabelLight);
-        lightVectorGrid.add(xFieldLight);
-        lightVectorGrid.add(yLabelLight);
-        lightVectorGrid.add(yFieldLight);
-        lightVectorGrid.add(zLabelLight);
-        lightVectorGrid.add(zFieldLight);
+        lightVectorGrid.add(xLabelLight); lightVectorGrid.add(xFieldLight);
+        lightVectorGrid.add(yLabelLight); lightVectorGrid.add(yFieldLight);
+        lightVectorGrid.add(zLabelLight); lightVectorGrid.add(zFieldLight);
 
         lightPanelLabel.setAlignmentX(Component.CENTER_ALIGNMENT);
         lightVectorGrid.setAlignmentX(Component.CENTER_ALIGNMENT);
@@ -281,50 +334,26 @@ public class Main extends JPanel {
         JLabel zLabelShape = new JLabel("Z:");
         xFieldShape = new ScrubbableField(selectedShape == null ? 0.0 : selectedShape.getCenter().getX(), -100000.0, 100000.0, 0.1);
         xFieldShape.setOnValueChange(val -> {
-            double x = val;
-            double y = Double.parseDouble(yFieldShape.getText());
-            double z = Double.parseDouble(zFieldShape.getText());
-            selectedShape.translateShape(x - selectedShape.getCenter().getX(), 0, 0);
-            
-             for (Shape s : shapes) {
-                s.updateView(totalAngleX, totalAngleY, totalAngleZ, perspectiveMode, focalLength, camX, camY, camZ);
+            if(selectedShape != null) {
+                selectedShape.translateShape(val - selectedShape.getCenter().getX(), 0, 0);
             }
-            
-            panel.repaint();
         });
         yFieldShape = new ScrubbableField(selectedShape == null ? 0.0 : selectedShape.getCenter().getY(), -100000.0, 100000.0, 0.1);
         yFieldShape.setOnValueChange(val -> {
-            double x = Double.parseDouble(xFieldShape.getText());
-            double y = val;
-            double z = Double.parseDouble(zFieldShape.getText());
-            selectedShape.translateShape(0, y - selectedShape.getCenter().getY(), 0);
-            
-             for (Shape s : shapes) {
-                s.updateView(totalAngleX, totalAngleY, totalAngleZ, perspectiveMode, focalLength, camX, camY, camZ);
+            if(selectedShape != null) {
+                selectedShape.translateShape(0, val - selectedShape.getCenter().getY(), 0);
             }
-            
-            panel.repaint();
         });
         zFieldShape = new ScrubbableField(selectedShape == null ? 0.0 : selectedShape.getCenter().getZ(), -100000.0, 100000.0, 0.1);
         zFieldShape.setOnValueChange(val -> {
-            double x = Double.parseDouble(xFieldShape.getText());
-            double y = Double.parseDouble(yFieldShape.getText());
-            double z = val;
-            selectedShape.translateShape(0, 0, z - selectedShape.getCenter().getZ());
-            
-             for (Shape s : shapes) {
-                s.updateView(totalAngleX, totalAngleY, totalAngleZ, perspectiveMode, focalLength, camX, camY, camZ);
+            if(selectedShape != null) {
+                selectedShape.translateShape(0, 0, val - selectedShape.getCenter().getZ());
             }
-            
-            panel.repaint();
         });
 
-        shapePositionGrid.add(xLabelShape);
-        shapePositionGrid.add(xFieldShape);
-        shapePositionGrid.add(yLabelShape);
-        shapePositionGrid.add(yFieldShape);
-        shapePositionGrid.add(zLabelShape);
-        shapePositionGrid.add(zFieldShape);
+        shapePositionGrid.add(xLabelShape); shapePositionGrid.add(xFieldShape);
+        shapePositionGrid.add(yLabelShape); shapePositionGrid.add(yFieldShape);
+        shapePositionGrid.add(zLabelShape); shapePositionGrid.add(zFieldShape);
 
         selectedShapePanelLabel.setAlignmentX(Component.CENTER_ALIGNMENT);
         shapePositionGrid.setAlignmentX(Component.CENTER_ALIGNMENT);
@@ -335,105 +364,114 @@ public class Main extends JPanel {
         lightPanel.setAlignmentX(Component.CENTER_ALIGNMENT);
         selectedShapePanel.setAlignmentX(Component.CENTER_ALIGNMENT);
 
-        eastPanel.add(selectedShapePanel);
-        eastPanel.add(Box.createVerticalStrut(20));
-        eastPanel.add(lightPanel);
-        eastPanel.add(Box.createVerticalStrut(20));
-        eastPanel.add(fovPanel);
-        eastPanel.add(Box.createVerticalStrut(10));
-        eastPanel.add(scalePanel);
-        eastPanel.add(Box.createVerticalStrut(10));
-        eastPanel.add(showBoundingBoxCheckBox);
-        eastPanel.add(Box.createVerticalStrut(10));
-        eastPanel.add(showGridCheckBox);
-        eastPanel.add(Box.createVerticalStrut(20));
-        eastPanel.add(showWireframeCheckBox);
-        eastPanel.add(Box.createVerticalStrut(10));
+        eastPanel.add(selectedShapePanel); eastPanel.add(Box.createVerticalStrut(20));
+        eastPanel.add(lightPanel); eastPanel.add(Box.createVerticalStrut(20));
+        eastPanel.add(fovPanel); eastPanel.add(Box.createVerticalStrut(10));
+        eastPanel.add(scalePanel); eastPanel.add(Box.createVerticalStrut(10));
+        eastPanel.add(showBoundingBoxCheckBox); eastPanel.add(Box.createVerticalStrut(10));
+        eastPanel.add(showGridCheckBox); eastPanel.add(Box.createVerticalStrut(20));
+        eastPanel.add(showWireframeCheckBox); eastPanel.add(Box.createVerticalStrut(10));
         eastPanel.add(perspectiveCheckBox);
-
 
         eastWrapper.add(eastPanel, BorderLayout.NORTH);
 
         JMenuBar menuBar = new JMenuBar();
-
         JMenu fileMenu = new JMenu("File");
-
         JMenuItem newItem = new JMenuItem("New");
-        JMenuItem importObjItem = new JMenuItem("Open");
+        JMenuItem openObjItem = new JMenuItem("Open");
+
+        JMenu importMenu = new JMenu("Import");
+        JMenuItem importItem = new JMenuItem("Add OBJ");
 
         fileMenu.setMnemonic('F');
-        importObjItem.setMnemonic('I');
+        openObjItem.setMnemonic('O');
+        importItem.setMnemonic('I');
 
         newItem.addActionListener(e -> {
-            scale = 1;
-            scaleField.setText("1.0");
-            totalAngleX = 0;
-            totalAngleY = 0;
-            totalAngleZ = 0;
-
-            camX = 0;
-            camY = 0;
-            camZ = 0;
-            panel.removeAll();
-            triangles.clear();
+            scale = 1; scaleField.setText("1.0");
+            totalAngleX = 0; totalAngleY = 0; totalAngleZ = 0;
+            camX = 0; camY = 0; camZ = 0;
             shapes.clear();
-            panel.repaint();
         });
 
-        importObjItem.addActionListener(e -> {
+        openObjItem.addActionListener(e -> {
             JFileChooser fileChooser = new JFileChooser();
-
             FileNameExtensionFilter filter = new FileNameExtensionFilter("3D Model Files (.obj)", "obj");
             fileChooser.setFileFilter(filter);
 
-            int result = fileChooser.showOpenDialog(frame);
-            if (result == JFileChooser.APPROVE_OPTION) {
-                File selectedFile = fileChooser.getSelectedFile();
-                Shape objShape = panel.parseObjFile(selectedFile.getAbsolutePath());
+            if (fileChooser.showOpenDialog(frame) == JFileChooser.APPROVE_OPTION) {
+                Shape objShape = panel.parseObjFile(fileChooser.getSelectedFile().getAbsolutePath());
                 if (objShape != null) {
-                    panel.removeAll();
-                    triangles.clear();
                     shapes.clear();
-
-                    for (Triangle t : objShape.getTriangles()) {
-                        triangles.add(t);
-                    }
-
-                    scale = 1;
-                    scaleField.setText("1.0");
-
-                    totalAngleX = 0;
-                    totalAngleY = 0;
-                    totalAngleZ = 0;
-
-                    camX = 0;
-                    camY = 0;
-                    camZ = 0;
-
+                    scale = 1; scaleField.setText("1.0");
+                    totalAngleX = 0; totalAngleY = 0; totalAngleZ = 0;
+                    camX = 0; camY = 0; camZ = 0;
                     shapes.add(objShape);
                     objShape.updateView(totalAngleX, totalAngleY, totalAngleZ, perspectiveMode, focalLength, camX, camY, camZ);
-                    panel.repaint();
                 } else {
                     JOptionPane.showMessageDialog(frame, "Failed to load OBJ file.");
                 }
             }
         });
 
+        importItem.addActionListener(e -> {
+            JFileChooser fileChooser = new JFileChooser();
+            FileNameExtensionFilter filter = new FileNameExtensionFilter("3D Model Files (.obj)", "obj");
+            fileChooser.setFileFilter(filter);
+
+            if (fileChooser.showOpenDialog(frame) == JFileChooser.APPROVE_OPTION) {
+                Shape objShape = panel.parseObjFile(fileChooser.getSelectedFile().getAbsolutePath());
+                if (objShape != null) {
+                    shapes.add(objShape);
+                    objShape.updateView(totalAngleX, totalAngleY, totalAngleZ, perspectiveMode, focalLength, camX, camY, camZ);
+                } else {
+                    JOptionPane.showMessageDialog(frame, "Failed to load OBJ file.");
+                }
+            }
+        });
+
+        JPopupMenu shapeMenu = new JPopupMenu();
+        JMenuItem colorItem = new JMenuItem("Change Color");
+        JMenuItem deleteItem = new JMenuItem("Delete");
+
+        colorItem.addActionListener(e -> {
+            if (selectedShape != null) {
+                Color newColor = JColorChooser.showDialog(frame, "Choose Shape Color", Color.GREEN);
+                if (newColor != null) {
+                    for (Triangle t : selectedShape.getTriangles()) {
+                        t.setColor(newColor);
+                    }
+                }
+            }
+        });
+
+        deleteItem.addActionListener(e -> {
+            if (selectedShape != null) {
+                synchronized(shapes) {
+                    shapes.remove(selectedShape);
+                    deleteObject(selectedShape);
+                    selectedShape = null;
+                    
+                    xFieldShape.setText("0.0");
+                    yFieldShape.setText("0.0");
+                    zFieldShape.setText("0.0");
+                }
+            }
+        });
+
+        shapeMenu.add(colorItem);
+        shapeMenu.addSeparator();
+        shapeMenu.add(deleteItem);
+        
+
         MouseAdapter mouseAdapter = new MouseAdapter() {
             @Override
             public void mousePressed(MouseEvent e) {
-                pressPoint = e.getPoint();
-                lastMousePos = e.getPoint();
-
+                pressPoint = e.getPoint(); lastMousePos = e.getPoint();
                 if (selectedShape != null) {
-                    double offsetX = panel.getWidth() / 2.0;
-                    double offsetY = panel.getHeight() / 2.0;
-                    
                     draggingAxis = selectedShape.getGizmoHit(
-                        e.getX(), e.getY(), 
-                        offsetX, offsetY, 
-                        zoomFactor, totalAngleX, totalAngleY, totalAngleZ,
-                        perspectiveMode, focalLength
+                        e.getX(), e.getY(), panel.getWidth() / 2.0, panel.getHeight() / 2.0, 
+                        zoomFactor, totalAngleX, totalAngleY, totalAngleZ, perspectiveMode, focalLength, camX, camY, camZ
                     );
                 }
             }
@@ -444,264 +482,208 @@ public class Main extends JPanel {
                     int dx = e.getX() - lastMousePos.x;
                     int dy = e.getY() - lastMousePos.y;
 
-                    if (draggingAxis != null && selectedShape != null) {
-                        int dx2 = e.getX() - lastMousePos.x;
-                        int dy2 = e.getY() - lastMousePos.y;
+                    synchronized(shapes) {
+                        if (draggingAxis != null && selectedShape != null) {
+                            Vector worldAxis = new Vector(0, 0, 0);
+                            if (draggingAxis.equals("X")) worldAxis = new Vector(1, 0, 0);
+                            else if (draggingAxis.equals("Y")) worldAxis = new Vector(0, -1, 0);
+                            else if (draggingAxis.equals("Z")) worldAxis = new Vector(0, 0, 1);
 
-                        Vector worldAxis = new Vector(0, 0, 0);
-                        if (draggingAxis.equals("X")) worldAxis = new Vector(1, 0, 0);
-                        else if (draggingAxis.equals("Y")) worldAxis = new Vector(0, -1, 0);
-                        else if (draggingAxis.equals("Z")) worldAxis = new Vector(0, 0, 1);
+                            Vector screenVector = new Vector(worldAxis.getX(), worldAxis.getY(), worldAxis.getZ());
+                            screenVector.rotateY(totalAngleY); screenVector.rotateX(totalAngleX); screenVector.rotateZ(totalAngleZ);
 
-                        Vector screenVector = new Vector(worldAxis.getX(), worldAxis.getY(), worldAxis.getZ());
-                        screenVector.rotateY(totalAngleY);
-                        screenVector.rotateX(totalAngleX);
-                        screenVector.rotateZ(totalAngleZ);
+                            double screenX = screenVector.getX(), screenY = screenVector.getY();
+                            double mag = Math.sqrt(screenX * screenX + screenY * screenY);
+                            double moveAmount = (mag > 0.0001) ? ((dx * (screenX / mag) + dy * (screenY / mag)) / zoomFactor) : (dx / zoomFactor);
 
-                        double screenX = screenVector.getX();
-                        double screenY = screenVector.getY();
-                        double mag = Math.sqrt(screenX * screenX + screenY * screenY);
+                            selectedShape.translateShape(worldAxis.getX() * moveAmount, worldAxis.getY() * moveAmount, worldAxis.getZ() * moveAmount);
 
-                        double moveAmount;
-                        if (mag > 0.0001) {
-                            screenX /= mag;
-                            screenY /= mag;
-
-                            moveAmount = (dx2 * screenX + dy2 * screenY) / zoomFactor;
-                        } else {
-                            moveAmount = dx2 / zoomFactor;
-                        }
-
-                        double moveX = worldAxis.getX() * moveAmount;
-                        double moveY = worldAxis.getY() * moveAmount; 
-                        double moveZ = worldAxis.getZ() * moveAmount;
-
-                        selectedShape.translateShape(moveX, moveY, moveZ);
-                        
-                        for (Shape s : shapes) {
-                            s.updateView(totalAngleX, totalAngleY, totalAngleZ, perspectiveMode, focalLength, camX, camY, camZ);
-                        }
-                        
-                        lastMousePos = e.getPoint();
-                        panel.repaint();
-                    } else if (javax.swing.SwingUtilities.isRightMouseButton(e)) {
-
-                        double sensitivity = 0.3;
-                        totalAngleX += dy * sensitivity;
-                        totalAngleX = Math.max(-89.0, Math.min(89.0, totalAngleX)); // clamp pitch — prevents flip
-                        totalAngleY -= dx * sensitivity;
-
-                        for (Shape s : shapes) {
-                            s.updateView(totalAngleX, totalAngleY, totalAngleZ, perspectiveMode, focalLength, camX, camY, camZ);
+                            xFieldShape.setText(String.format("%.2f", selectedShape.getCenter().getX()));
+                            yFieldShape.setText(String.format("%.2f", -selectedShape.getCenter().getY()));
+                            zFieldShape.setText(String.format("%.2f", selectedShape.getCenter().getZ()));
+                        } else if (javax.swing.SwingUtilities.isRightMouseButton(e)) {
+                            double sensitivity = 0.3;
+                            totalAngleX = Math.max(-89.0, Math.min(89.0, totalAngleX + (dy * sensitivity))); 
+                            totalAngleY -= dx * sensitivity;
                         }
                     }
-
                     lastMousePos = e.getPoint();
-                    panel.repaint();
                 }
             }
 
             @Override
             public void mouseReleased(MouseEvent e) {
-                isPaused = false;
-                draggingAxis = null;
-                if (pressPoint != null) {
-                    double distance = pressPoint.distance(e.getPoint());
-                    
-                    if (distance < 5) {
-                        double mouseX = e.getX();
-                        double mouseY = e.getY();
-                        double offsetX = panel.getWidth() / 2.0;
-                        double offsetY = panel.getHeight() / 2.0;
+                isPaused = false; draggingAxis = null;
+                if (pressPoint != null && pressPoint.distance(e.getPoint()) < 5) {
+                    double worldX = (e.getX() - panel.getWidth() / 2.0) / Main.zoomFactor;
+                    double worldY = (e.getY() - panel.getHeight() / 2.0) / Main.zoomFactor;
+                    selectedShape = getObjectAt(worldX, worldY);
 
-                        double worldX = (mouseX - offsetX) / Main.zoomFactor;
-                        double worldY = (mouseY - offsetY) / Main.zoomFactor;
+                    if (selectedShape != null) {
+                        xFieldShape.setText(String.format("%.2f", selectedShape.getCenter().getX()));
+                        yFieldShape.setText(String.format("%.2f", -selectedShape.getCenter().getY()));
+                        zFieldShape.setText(String.format("%.2f", selectedShape.getCenter().getZ()));
+                    } else {
+                        xFieldShape.setText("0.0");
+                        yFieldShape.setText("0.0");
+                        zFieldShape.setText("0.0");
+                    }
 
-                        selectedShape = getObjectAt(worldX, worldY);
+                    if (javax.swing.SwingUtilities.isRightMouseButton(e) && selectedShape != null) {
+                        shapeMenu.show(panel, e.getX(), e.getY());
                     }
                 }
-                panel.repaint();
             }
         };
 
         panel.addMouseListener(mouseAdapter);
         panel.addMouseMotionListener(mouseAdapter);
-
         panel.addMouseWheelListener(e -> {
             double rotation = e.getPreciseWheelRotation();
             if (rotation == 0) return;
-            double zoomStep = (rotation < 0) ? 1.05 : 0.95;
-            zoomFactor *= zoomStep;
+            zoomFactor *= (rotation < 0) ? 1.05 : 0.95;
             scaleField.setText(String.format("%.2f", zoomFactor));
-            panel.repaint();
         });
 
         panel.setFocusable(true);
-        panel.addMouseListener(new java.awt.event.MouseAdapter() {
-            public void mouseClicked(java.awt.event.MouseEvent e) { panel.requestFocusInWindow(); }
-        });
+        panel.addMouseListener(new java.awt.event.MouseAdapter() { public void mouseClicked(java.awt.event.MouseEvent e) { panel.requestFocusInWindow(); } });
         panel.addKeyListener(new java.awt.event.KeyAdapter() {
             public void keyPressed(java.awt.event.KeyEvent e)  { pressedKeys.add(e.getKeyCode()); }
             public void keyReleased(java.awt.event.KeyEvent e) { pressedKeys.remove(e.getKeyCode()); }
         });
 
-        Timer movementTimer = new Timer(1, e -> {
-            if (pressedKeys.isEmpty()) return;
-
-            double[] fwd   = localToWorld(0,  0,  1);
-            double[] right = localToWorld(1,  0,  0);
-            double[] up    = localToWorld(0, -1,  0);
-
-            double spd = flySpeed * accelerationSpeed;
-            boolean moved = false;
-            boolean accelerating = pressedKeys.contains(java.awt.event.KeyEvent.VK_SHIFT);
-
-            if (pressedKeys.contains(java.awt.event.KeyEvent.VK_W)) { camX += fwd[0]*spd; camY += fwd[1]*spd; camZ += fwd[2]*spd; moved = true; }
-            if (pressedKeys.contains(java.awt.event.KeyEvent.VK_S)) { camX -= fwd[0]*spd; camY -= fwd[1]*spd; camZ -= fwd[2]*spd; moved = true; }
-            if (pressedKeys.contains(java.awt.event.KeyEvent.VK_A)) { camX -= right[0]*spd; camY -= right[1]*spd; camZ -= right[2]*spd; moved = true; }
-            if (pressedKeys.contains(java.awt.event.KeyEvent.VK_D)) { camX += right[0]*spd; camY += right[1]*spd; camZ += right[2]*spd; moved = true; }
-            if (pressedKeys.contains(java.awt.event.KeyEvent.VK_SPACE)) { camX += up[0]*spd; camY += up[1]*spd; camZ += up[2]*spd; moved = true; }
-            if (pressedKeys.contains(java.awt.event.KeyEvent.VK_CONTROL)) { camX -= up[0]*spd; camY -= up[1]*spd; camZ -= up[2]*spd; moved = true; }
-            if (!accelerating) {
-                accelerationSpeed = 1.0;
-                accelerating = true;
-            } else {
-                accelerationSpeed = Math.min(accelerationSpeed + 0.05, 5.0);
-            }
-
-            if (moved) {
-                for (Shape s : shapes) {
-                    s.updateView(totalAngleX, totalAngleY, totalAngleZ, perspectiveMode, focalLength, camX, camY, camZ);
-                }
-                panel.repaint();
-            }
-        });
-        movementTimer.start();
-   
-
         fileMenu.add(newItem);
         fileMenu.addSeparator();
-        fileMenu.add(importObjItem);
-       
-
+        fileMenu.add(openObjItem);
         menuBar.add(fileMenu);
-        frame.setJMenuBar(menuBar);
 
+        importMenu.add(importItem);
+        menuBar.add(importMenu);
+
+        frame.setJMenuBar(menuBar);
         frame.add(eastWrapper, BorderLayout.EAST);
 
-        frame.setSize(900, 900);
-
-        Vertex vTLF = new Vertex(-50, -50, 0); // Top Left Front
-        Vertex vBLF = new Vertex(-50, 50, 0); // Bottom Left Front
-        Vertex vTRF = new Vertex(50, -50, 0); // Top Right Front
-        Vertex vBRF = new Vertex(50, 50, 0); // Bottom Right Front
-
-        Vertex vTLB = new Vertex(-50, -50, 100); // Top Left Back
-        Vertex vBLB = new Vertex(-50, 50, 100); // Bottom Left Back
-        Vertex vTRB = new Vertex(50, -50, 100); // Top Right Back
-        Vertex vBRB = new Vertex(50, 50, 100); // Bottom Right Back
-
-        // Front
-        Triangle f1 = new Triangle(vTLF, vBLF, vTRF);
-        Triangle f2 = new Triangle(vTRF, vBLF, vBRF);
-        // Back
-        Triangle ba1 = new Triangle(vTLB, vBLB, vTRB);
-        Triangle ba2 = new Triangle(vTRB, vBLB, vBRB);
-        // Left
-        Triangle l1 = new Triangle(vTLB, vBLB, vTLF);
-        Triangle l2 = new Triangle(vTLF, vBLB, vBLF);
-        // Right
-        Triangle r1 = new Triangle(vTRF, vBRF, vTRB);
-        Triangle r2 = new Triangle(vTRB, vBRF, vBRB);
-        // Top
-        Triangle t1 = new Triangle(vTLB, vTLF, vTRB);
-        Triangle t2 = new Triangle(vTRB, vTLF, vTRF);
-        // Bottom
-        Triangle bo1 = new Triangle(vBLF, vBLB, vBRF);
-        Triangle bo2 = new Triangle(vBRF, vBLB, vBRB);
-
-        Shape cube = new Shape( new Triangle[]{f1, f2, ba1, ba2, l1, l2, r1, r2, t1, t2, bo1, bo2});
-
-        for (Triangle t : cube.getTriangles()) {
-            triangles.add(t);
-        }
-
-        
-        Timer timer = new Timer(1, e -> {
-            for (Shape s : shapes) {
-                s.updateView(totalAngleX, totalAngleY, totalAngleZ, perspectiveMode, focalLength, camX, camY, camZ);
-            }
-            panel.repaint();
+        // default cube shape
+        Vertex vTLF = new Vertex(-50, -50, 0), vBLF = new Vertex(-50, 50, 0), vTRF = new Vertex(50, -50, 0), vBRF = new Vertex(50, 50, 0);
+        Vertex vTLB = new Vertex(-50, -50, 100), vBLB = new Vertex(-50, 50, 100), vTRB = new Vertex(50, -50, 100), vBRB = new Vertex(50, 50, 100);
+        Shape cube = new Shape(new Triangle[]{
+            new Triangle(vTLF, vBLF, vTRF), new Triangle(vTRF, vBLF, vBRF), new Triangle(vTLB, vBLB, vTRB), new Triangle(vTRB, vBLB, vBRB),
+            new Triangle(vTLB, vBLB, vTLF), new Triangle(vTLF, vBLB, vBLF), new Triangle(vTRF, vBRF, vTRB), new Triangle(vTRB, vBRF, vBRB),
+            new Triangle(vTLB, vTLF, vTRB), new Triangle(vTRB, vTLF, vTRF), new Triangle(vBLF, vBLB, vBRF), new Triangle(vBRF, vBLB, vBRB)
         });
-        timer.start();
 
         panel.addShape(cube);
-        cube.updateView(totalAngleX, totalAngleY, totalAngleZ, perspectiveMode, focalLength, camX, camY, camZ);
-
         frame.setDefaultCloseOperation(JFrame.EXIT_ON_CLOSE);
-        frame.setSize(900, 900);
         frame.add(panel, BorderLayout.CENTER);
+        frame.pack();
         frame.setVisible(true);
+
+        panel.start();
     }
 
     private static double[] localToWorld(double lx, double ly, double lz) {
         Vertex dir = new Vertex(lx, ly, lz);
-        dir.rotateViewZ(-totalAngleZ);
-        dir.rotateViewX(-totalAngleX);
-        dir.rotateViewY(-totalAngleY);
+        dir.rotateViewZ(-totalAngleZ); dir.rotateViewX(-totalAngleX); dir.rotateViewY(-totalAngleY);
         return new double[]{ dir.getViewX(), dir.getViewY(), dir.getViewZ() };
     }
 
-    public void render(Triangle[] triangles, BufferedImage canvas, double[] zBuffer) {
+    public void renderScene(Shape[] localShapes, BufferedImage canvas, double[] zBuffer) {
         int offsetX = canvas.getWidth() / 2;
         int offsetY = canvas.getHeight() / 2;
 
-        if (showGrid)
-            drawGridIntoCanvas(canvas, zBuffer, offsetX, offsetY);
+        if (showGrid) drawGridIntoCanvas(canvas, zBuffer, offsetX, offsetY);
+
+        int[] pixels = ((java.awt.image.DataBufferInt) canvas.getRaster().getDataBuffer()).getData();
 
         if (wireframeMode) {
             Graphics2D g2 = (Graphics2D) canvas.getGraphics();
             g2.translate(offsetX, offsetY);
             g2.scale(zoomFactor, zoomFactor);
             g2.setStroke(new BasicStroke((float)(1.0 / zoomFactor)));
-            for (Triangle t : triangles) {
-                t.drawWireframe(g2);
+            
+            for (Shape shape : localShapes) {
+                for (Triangle t : shape.getTriangles()) {
+                    if (perspectiveMode) {
+                        double nearPlane = -focalLength + 0.1;
+                        Vertex[] v = t.getVertices();
+                        if (v[0].getViewZ() < nearPlane || v[1].getViewZ() < nearPlane || v[2].getViewZ() < nearPlane) {
+                            continue; 
+                        }
+                    }
+
+                    Vector viewNormal = t.getViewNormalVector();
+                    double dot;
+                    if (perspectiveMode) {
+                        double camRayX = t.getVertices()[0].getViewX();
+                        double camRayY = t.getVertices()[0].getViewY();
+                        double camRayZ = t.getVertices()[0].getViewZ() + focalLength;
+                        dot = (camRayX * viewNormal.getX()) + (camRayY * viewNormal.getY()) + (camRayZ * viewNormal.getZ());
+                    } else {
+                        dot = viewNormal.getZ();
+                    }
+                    if (dot >= 0) continue; 
+
+                    t.drawWireframe(g2);
+                }
             }
             g2.dispose();
-        }
-        else {
+        } else {
+            Object[] rowLocks = new Object[canvas.getHeight()];
+            for (int i = 0; i < rowLocks.length; i++) {
+                rowLocks[i] = new Object();
+            }
 
-            for (Triangle t : triangles) {
-                double[] bb = t.getBoundingBox();
-                
+            synchronized(localShapes) {
+                java.util.Arrays.stream(localShapes).flatMap(s -> java.util.Arrays.stream(s.getTriangles())).parallel().forEach(t -> {
+                    if (perspectiveMode) {
+                        double nearPlane = -focalLength + 0.1; 
+                        Vertex[] v = t.getVertices();
+                        if (v[0].getViewZ() < nearPlane || v[1].getViewZ() < nearPlane || v[2].getViewZ() < nearPlane) {
+                            return; 
+                        }
+                    }
 
-                int minX = (int) (bb[0] * zoomFactor) + offsetX;
-                int maxX = (int) (bb[1] * zoomFactor) + offsetX;
-                int minY = (int) (bb[2] * zoomFactor) + offsetY;
-                int maxY = (int) (bb[3] * zoomFactor) + offsetY;
+                    Vector viewNormal = t.getViewNormalVector();
+                    double dot;
+                    if (perspectiveMode) {
+                        double camRayX = t.getVertices()[0].getViewX();
+                        double camRayY = t.getVertices()[0].getViewY();
+                        double camRayZ = t.getVertices()[0].getViewZ() + focalLength;
+                        dot = (camRayX * viewNormal.getX()) + (camRayY * viewNormal.getY()) + (camRayZ * viewNormal.getZ());
+                    } else {
+                        dot = viewNormal.getZ();
+                    }
 
-                minX = Math.max(0, minX);
-                maxX = Math.min(canvas.getWidth() - 1, maxX);
-                minY = Math.max(0, minY);
-                maxY = Math.min(canvas.getHeight() - 1, maxY);
+                    if (dot >= 0) return;
 
-                for (int y = minY; y <= maxY; y++) {
-                    for (int x = minX; x <= maxX; x++) {
-                        double worldX = (x - offsetX) / zoomFactor;
-                        double worldY = (y - offsetY) / zoomFactor;
+                    double[] bb = t.getBoundingBox();
+                    int minX = Math.max(0, (int) (bb[0] * zoomFactor) + offsetX);
+                    int maxX = Math.min(canvas.getWidth() - 1, (int) (bb[1] * zoomFactor) + offsetX);
+                    int minY = Math.max(0, (int) (bb[2] * zoomFactor) + offsetY);
+                    int maxY = Math.min(canvas.getHeight() - 1, (int) (bb[3] * zoomFactor) + offsetY);
 
-                        if (t.isInside(worldX, worldY)) {
-                            double currentZ = t.getZAt(worldX, worldY, perspectiveMode, focalLength);
-                            int pixelIndex = y * canvas.getWidth() + x;
-                            
-                            if (currentZ < zBuffer[pixelIndex]) {
-                                zBuffer[pixelIndex] = currentZ;
-                                Vector normal = t.getNormalVector(); 
-                                canvas.setRGB(x, y, calculateColor(t.getColor(), currentZ, normal));
+                    Vector normal = t.getNormalVector();
+                    int triangleColor = calculateColor(t.getColor(), 0, normal); 
+
+                    for (int y = minY; y <= maxY; y++) {
+                        for (int x = minX; x <= maxX; x++) {
+                            double worldX = (x - offsetX) / zoomFactor;
+                            double worldY = (y - offsetY) / zoomFactor;
+
+                            if (t.isInside(worldX, worldY)) {
+                                double currentZ = t.getZAt(worldX, worldY, perspectiveMode, focalLength);
+                                int pixelIndex = y * canvas.getWidth() + x;
+                                
+                                synchronized(rowLocks[y]) {
+                                    if (currentZ < zBuffer[pixelIndex]) {
+                                        zBuffer[pixelIndex] = currentZ;
+                                        pixels[pixelIndex] = triangleColor;
+                                    }
+                                }
                             }
                         }
                     }
-                }
+                });
             }
         }
     }
@@ -709,185 +691,110 @@ public class Main extends JPanel {
     public int calculateColor(Color baseColor, double z, Vector normal) {
         Vector n = normal.normalize();
         double dot = n.dotProduct(lightDir);
-
         double lightIntensity = Math.max(0.2, Math.abs(dot));
 
-        int r = (int)(baseColor.getRed()   * lightIntensity);
-        int g = (int)(baseColor.getGreen() * lightIntensity);
-        int b = (int)(baseColor.getBlue()  * lightIntensity);
-
         return new Color(
-            Math.min(255, r),
-            Math.min(255, g),
-            Math.min(255, b)
+            Math.min(255, (int)(baseColor.getRed() * lightIntensity)),
+            Math.min(255, (int)(baseColor.getGreen() * lightIntensity)),
+            Math.min(255, (int)(baseColor.getBlue() * lightIntensity))
         ).getRGB();
-    }
-
-    static private void updateRotation() {
-        try {
-            if (!isPaused) {
-                xRotation = Double.parseDouble(xField.getText());
-                yRotation = Double.parseDouble(yField.getText());
-                zRotation = Double.parseDouble(zField.getText()); 
-            }
-            
-        } catch (NumberFormatException e) {
-            JOptionPane.showMessageDialog(frame, "Rotation values must be valid numbers");
-        }
     }
 
     private Shape parseObjFile(String filePath) {
         File object = new File(filePath);
-
         ArrayList<Triangle> localTriangles = new ArrayList<>(); 
         ArrayList<Vertex> localVertices = new ArrayList<>();
-        ArrayList<Vertex> localNormalVertices = new ArrayList<>();
-        ArrayList<double[]> localTextureVertices = new ArrayList<>();
 
         try(Scanner scanner = new Scanner(object)) {
             while (scanner.hasNextLine()) {
                 String line = scanner.nextLine();
                 if (line.startsWith("v ")) {
-                    // parse vertex
                     String[] parts = line.split("\\s+");
-                    double x = Double.parseDouble(parts[1]);
-                    double y = Double.parseDouble(parts[2]);
-                    double z = Double.parseDouble(parts[3]);
-
-                    localVertices.add(new Vertex(x, y, z));
-                } else if (line.startsWith("vt ")) {
-                    // parse texture vertex
-                    String[] parts = line.split("\\s+");
-                    double x = Double.parseDouble(parts[1]);
-                    double y = Double.parseDouble(parts[2]);
-
-                    localTextureVertices.add(new double[]{x, y});
-                } else if (line.startsWith("vn ")) {
-                    // parse normal vertex
-                    String[] parts = line.split("\\s+");
-                    double x = Double.parseDouble(parts[1]);
-                    double y = Double.parseDouble(parts[2]);
-                    double z = Double.parseDouble(parts[3]);
-
-                    localNormalVertices.add(new Vertex(x, y, z));
+                    localVertices.add(new Vertex(Double.parseDouble(parts[1]), Double.parseDouble(parts[2]), Double.parseDouble(parts[3])));
                 } else if (line.startsWith("f ")) {
-                    // example if 3/3/5 9/9/5 7/7/5 5/5/5
-                    // break the line into parts ("f", "3/3/5", "9/9/5", "7/7/5", "5/5/5")
                     String[] parts = line.split("\\s+");
                     int numVertices = parts.length - 1;
-
                     if (numVertices >= 3) {
-                        // pull just the vertex indices
                         int[] vertexIndices = new int[numVertices];
-                        int[] textureIndices = new int[numVertices];
-                        int[] normalIndices = new int[numVertices];
-                        for (int i = 0; i < numVertices; i++) {
-                            // split by / and parse
-                            String[] subParts = parts[i + 1].split("/");
-                            vertexIndices[i] = Integer.parseInt(subParts[0]) - 1;
-                            if (subParts.length == 2)
-                                textureIndices[i] = Integer.parseInt(subParts[1]) - 1;
-                            if (subParts.length == 3)
-                                normalIndices[i] = Integer.parseInt(subParts[2]) - 1;
-                        }
-
+                        for (int i = 0; i < numVertices; i++) vertexIndices[i] = Integer.parseInt(parts[i + 1].split("/")[0]) - 1;
                         for (int i = 1; i < numVertices - 1; i++) {
-                            Vertex v1 = localVertices.get(vertexIndices[0]);
-                            Vertex v2 = localVertices.get(vertexIndices[i]);
-                            Vertex v3 = localVertices.get(vertexIndices[i + 1]);
-                            
-                            localTriangles.add(new Triangle(v1, v2, v3));
+                            localTriangles.add(new Triangle(localVertices.get(vertexIndices[0]), localVertices.get(vertexIndices[i]), localVertices.get(vertexIndices[i + 1])));
                         }
                     }
                 }
             }
-        } catch (FileNotFoundException e) {
-            e.printStackTrace();
-        }
+        } catch (FileNotFoundException e) { e.printStackTrace(); }
 
         double maxCoord = 0;
         for (Vertex v : localVertices) {
-            maxCoord = Math.max(maxCoord, Math.abs(v.getX()));
-            maxCoord = Math.max(maxCoord, Math.abs(v.getY()));
-            maxCoord = Math.max(maxCoord, Math.abs(v.getZ()));
+            maxCoord = Math.max(maxCoord, Math.max(Math.abs(v.getX()), Math.max(Math.abs(v.getY()), Math.abs(v.getZ()))));
         }
 
         if (maxCoord > 0 && maxCoord < 10) {
             double normalizationFactor = 100.0 / maxCoord;
             for (Vertex v : localVertices) {
-                v.setX(v.getX() * normalizationFactor);
-                v.setY(v.getY() * normalizationFactor);
-                v.setZ(v.getZ() * normalizationFactor);
+                v.setX(v.getX() * normalizationFactor); v.setY(v.getY() * normalizationFactor); v.setZ(v.getZ() * normalizationFactor);
             }
         }
 
-        Triangle[] triangleArray = localTriangles.toArray(new Triangle[0]);
-        triangles = localTriangles;
-        return new Shape(triangleArray, scale);
+        return new Shape(localTriangles.toArray(new Triangle[0]), scale);
     }
 
     private void drawGridIntoCanvas(BufferedImage canvas, double[] zBuffer, int offX, int offY) {
         Graphics2D g2 = (Graphics2D) canvas.getGraphics();
-        g2.setRenderingHint(RenderingHints.KEY_ANTIALIASING, RenderingHints.VALUE_ANTIALIAS_ON);
+        // Antialiasing on hundreds of thin grid lines is very expensive — not worth it
+        g2.setRenderingHint(RenderingHints.KEY_ANTIALIASING, RenderingHints.VALUE_ANTIALIAS_OFF);
         
         int spacing = 100; 
-        int baseColorRGB = 100;
-        
-        double viewHalfWidth  = (canvas.getWidth()  / 2.0) / zoomFactor;
-        double viewHalfHeight = (canvas.getHeight() / 2.0) / zoomFactor;
-        
-        double buffer = Math.max(viewHalfWidth, viewHalfHeight) * 6;
-        double minVisibleWorldX = camX - buffer;
-        double maxVisibleWorldX = camX + buffer;
-        double minVisibleWorldZ = camZ - buffer;
-        double maxVisibleWorldZ = camZ + buffer;
+        double buffer;
 
-        int startX = (int) (minVisibleWorldX / spacing) - 2; 
-        int endX   = (int) (maxVisibleWorldX / spacing) + 2;
-        int startZ = (int) (minVisibleWorldZ / spacing) - 2;
-        int endZ   = (int) (maxVisibleWorldZ / spacing) + 2;
-
-        Color gridColor = new Color(baseColorRGB, baseColorRGB, baseColorRGB, 150);
-
-        for (int i = startX; i <= endX; i++) {
-            double worldX = i * spacing;
-            draw3DLine(g2, worldX, 0.0, minVisibleWorldZ, worldX, 0.0, maxVisibleWorldZ, offX, offY, gridColor);
+        if (perspectiveMode) {
+            // 4000 was spawning 80+ lines per axis regardless of zoom; scale with focalLength instead
+            buffer = focalLength * 4.0;
+        } else {
+            buffer = Math.max((canvas.getWidth() / 2.0) / zoomFactor, (canvas.getHeight() / 2.0) / zoomFactor) * 2;
         }
 
-        for (int i = startZ; i <= endZ; i++) {
-            double worldZ = i * spacing;
-            draw3DLine(g2, minVisibleWorldX, 0, worldZ, maxVisibleWorldX, 0, worldZ, offX, offY, gridColor);
-        }
+        double minVisibleWorldX = camX - buffer, maxVisibleWorldX = camX + buffer;
+        double minVisibleWorldZ = camZ - buffer, maxVisibleWorldZ = camZ + buffer;
+
+        int startX = (int) (minVisibleWorldX / spacing) - 1;
+        int endX = (int) (maxVisibleWorldX / spacing) + 1;
+        int startZ = (int) (minVisibleWorldZ / spacing) - 1;
+        int endZ = (int) (maxVisibleWorldZ / spacing) + 1;
+
+        Color gridColor = new Color(100, 100, 100, 150);
+
+        for (int i = startX; i <= endX; i++) draw3DLine(g2, i * spacing, 0.0, minVisibleWorldZ, i * spacing, 0.0, maxVisibleWorldZ, offX, offY, gridColor);
+        for (int i = startZ; i <= endZ; i++) draw3DLine(g2, minVisibleWorldX, 0, i * spacing, maxVisibleWorldX, 0, i * spacing, offX, offY, gridColor);
         
         g2.dispose();
     }
-
-    private void draw3DPoint(Graphics2D g2, double x, double y, double z, int offX, int offY, Color color) {
-        Vertex v = new Vertex(x, y, z);
-        v.rotateViewY(totalAngleY);
-        v.rotateViewX(totalAngleX);
-
-        double sx = (v.getViewX() * zoomFactor) + offX;
-        double sy = (v.getViewY() * zoomFactor) + offY;
-
-        g2.setColor(color);
-        g2.fill(new java.awt.geom.Ellipse2D.Double(sx - 2, sy - 2, 4, 4));
-    }
     
     private void draw3DLine(Graphics2D g2, double x1, double y1, double z1, double x2, double y2, double z2, int offX, int offY, Color color) {
-        Vertex v1 = new Vertex(x1, y1, z1);
-        Vertex v2 = new Vertex(x2, y2, z2);
+        Vertex v1 = new Vertex(x1, y1, z1), v2 = new Vertex(x2, y2, z2);
         v1.setViewX(x1 - camX); v1.setViewY(y1 - camY); v1.setViewZ(z1 - camZ);
         v2.setViewX(x2 - camX); v2.setViewY(y2 - camY); v2.setViewZ(z2 - camZ);
 
+        if (perspectiveMode) {
+            v1.setViewZ(v1.getViewZ() + focalLength);
+            v2.setViewZ(v2.getViewZ() + focalLength);
+        }
+
         v1.rotateViewY(totalAngleY); v1.rotateViewX(totalAngleX); v1.rotateViewZ(totalAngleZ);
         v2.rotateViewY(totalAngleY); v2.rotateViewX(totalAngleX); v2.rotateViewZ(totalAngleZ);
+
+        if (perspectiveMode) {
+            v1.setViewZ(v1.getViewZ() - focalLength);
+            v2.setViewZ(v2.getViewZ() - focalLength);
+        }
 
         double vx1 = v1.getViewX(), vy1 = v1.getViewY(), vz1 = v1.getViewZ();
         double vx2 = v2.getViewX(), vy2 = v2.getViewY(), vz2 = v2.getViewZ();
 
         if (perspectiveMode) {
-            double near = -focalLength + 1.0;
+            double near = -focalLength + 1.0; 
+            
             if (vz1 < near && vz2 < near) return;
             if (vz1 < near) {
                 double t = (near - vz1) / (vz2 - vz1);
@@ -896,29 +803,76 @@ public class Main extends JPanel {
                 double t = (near - vz2) / (vz1 - vz2);
                 vx2 += t * (vx1 - vx2); vy2 += t * (vy1 - vy2); vz2 = near;
             }
+            
             double w1 = focalLength + vz1, w2 = focalLength + vz2;
-            double sx1 = (vx1 * focalLength / w1 * zoomFactor) + offX;
-            double sy1 = (vy1 * focalLength / w1 * zoomFactor) + offY;
-            double sx2 = (vx2 * focalLength / w2 * zoomFactor) + offX;
-            double sy2 = (vy2 * focalLength / w2 * zoomFactor) + offY;
+            double projX1 = (vx1 * focalLength / w1 * zoomFactor) + offX;
+            double projY1 = (vy1 * focalLength / w1 * zoomFactor) + offY;
+            double projX2 = (vx2 * focalLength / w2 * zoomFactor) + offX;
+            double projY2 = (vy2 * focalLength / w2 * zoomFactor) + offY;
+
+            if ((projX1 < -5000 && projX2 < -5000) || 
+                (projX1 > 5000 && projX2 > 5000) || 
+                (projY1 < -5000 && projY2 < -5000) || 
+                (projY1 > 5000 && projY2 > 5000)) {
+                return; 
+            }
+
             g2.setColor(color);
-            g2.draw(new java.awt.geom.Line2D.Double(sx1, sy1, sx2, sy2));
+            double[] seg = { projX1, projY1, projX2, projY2 };
+            if (clipLineToScreen(seg, offX * 2, offY * 2)) {
+                g2.draw(new java.awt.geom.Line2D.Double(seg[0], seg[1], seg[2], seg[3]));
+            }
         } else {
-            double sx1 = (vx1 * zoomFactor) + offX;
-            double sy1 = (vy1 * zoomFactor) + offY;
-            double sx2 = (vx2 * zoomFactor) + offX;
-            double sy2 = (vy2 * zoomFactor) + offY;
             g2.setColor(color);
-            g2.draw(new java.awt.geom.Line2D.Double(sx1, sy1, sx2, sy2));
+            g2.draw(new java.awt.geom.Line2D.Double((vx1 * zoomFactor) + offX, (vy1 * zoomFactor) + offY, (vx2 * zoomFactor) + offX, (vy2 * zoomFactor) + offY));
         }
+    }
+    private boolean clipLineToScreen(double[] seg, double screenW, double screenH) {
+        double x1 = seg[0], y1 = seg[1], x2 = seg[2], y2 = seg[3];
+        while (true) {
+            int c1 = screenOutCode(x1, y1, screenW, screenH);
+            int c2 = screenOutCode(x2, y2, screenW, screenH);
+            if ((c1 | c2) == 0) {
+                seg[0]=x1; seg[1]=y1; seg[2]=x2; seg[3]=y2;
+                return true;
+            }
+            
+            if ((c1 & c2) != 0) 
+                return false;
+
+            int c = (c1 != 0) ? c1 : c2;
+            double x, y;
+
+            if ((c & 8) != 0) {
+                x = x1 + (x2-x1)*(screenH-y1)/(y2-y1); y = screenH;
+            } else if ((c & 4) != 0) {
+                x = x1 + (x2-x1)*(0-y1)/(y2-y1); y = 0; 
+            } else if ((c & 2) != 0) {
+                y = y1 + (y2-y1)*(screenW-x1)/(x2-x1); x = screenW;
+            } else { 
+                y = y1 + (y2-y1)*(0-x1)/(x2-x1);
+                x = 0;
+            }
+
+            if (c == c1) {
+                x1 = x; y1 = y;
+            } else {
+                x2 = x; y2 = y;
+            }
+        }
+    }
+
+    private int screenOutCode(double x, double y, double screenW, double screenH) {
+        int c = 0;
+        if (x < 0) c |= 1; else if (x > screenW) c |= 2;
+        if (y < 0) c |= 4; else if (y > screenH) c |= 8;
+        return c;
     }
 
     private static Shape getObjectAt(double x, double y) {
         ArrayList<Shape> localShapes = new ArrayList<>();
         int index = 0;
-        //m.out.println("\n(" + x + ", " + y + ")");
         for (Shape shape : shapes) {
-            //System.out.println("Checking shape: " + shape.toString());
             for (Triangle t : shape.getTriangles()) {
                 if (t.isInside(x, y)) {
                     localShapes.add(shape);
@@ -926,10 +880,7 @@ public class Main extends JPanel {
                 }
             }
         }
-        if (localShapes.size() > 0) {
-            //System.out.println("\tSelected Shape: " + localShapes.get(0).toString());
-            return localShapes.get(0);
-        }
+        if (localShapes.size() > 0) return localShapes.get(0);
         else if (index > 0) {
             double closestZ = localShapes.get(0).getZAt(x, y, perspectiveMode, focalLength);
             Shape closestShape = localShapes.get(0);
@@ -941,14 +892,10 @@ public class Main extends JPanel {
                 }
             }
             return closestShape;
-        }
-        else {
-            return null;
-        }
+        } else return null;
     }
 
-    private static void clearSelectedShape() {
-        selectedShape = null;
+    private static void deleteObject(Shape s) {
+        shapes.remove(s);
     }
-
 }

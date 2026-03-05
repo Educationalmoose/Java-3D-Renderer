@@ -9,7 +9,7 @@ public class Triangle {
 
     double[] boundingBox = new double[4];
 
-    private Color color = Color.GREEN;
+    private Color color = Color.LIGHT_GRAY;
 
     public Triangle(Vertex v1, Vertex v2, Vertex v3) {
         this.v1 = v1;
@@ -63,8 +63,10 @@ public class Triangle {
         double d2 = (x - this.v3.getProjX()) * (this.v2.getProjY() - this.v3.getProjY()) - (this.v2.getProjX() - this.v3.getProjX()) * (y - this.v3.getProjY());
         double d3 = (x - this.v1.getProjX()) * (this.v3.getProjY() - this.v1.getProjY()) - (this.v3.getProjX() - this.v1.getProjX()) * (y - this.v1.getProjY());
 
-        boolean has_neg = (d1 < 0) || (d2 < 0) || (d3 < 0);
-        boolean has_pos = (d1 > 0) || (d2 > 0) || (d3 > 0);
+        double epsilon = -1e-5;
+
+        boolean has_neg = (d1 < epsilon) || (d2 < epsilon) || (d3 < epsilon);
+        boolean has_pos = (d1 > -epsilon) || (d2 > -epsilon) || (d3 > -epsilon);
 
         return !(has_neg && has_pos);
     }
@@ -89,12 +91,14 @@ public class Triangle {
     }
 
     public Vector getNormalVector() {
-        Vertex v1View = new Vertex(v1.getViewX(), v1.getViewY(), v1.getViewZ());
-        Vertex v2View = new Vertex(v2.getViewX(), v2.getViewY(), v2.getViewZ());
-        Vertex v3View = new Vertex(v3.getViewX(), v3.getViewY(), v3.getViewZ());
+        Vector A = new Vector(v2.getX() - v1.getX(), v2.getY() - v1.getY(), v2.getZ() - v1.getZ());
+        Vector B = new Vector(v3.getX() - v1.getX(), v3.getY() - v1.getY(), v3.getZ() - v1.getZ());
+        return A.crossProduct(B);
+    }
 
-        Vector A = new Vector(v2View, v1View);
-        Vector B = new Vector(v3View, v1View);
+    public Vector getViewNormalVector() {
+        Vector A = new Vector(v2.getViewX() - v1.getViewX(), v2.getViewY() - v1.getViewY(), v2.getViewZ() - v1.getViewZ());
+        Vector B = new Vector(v3.getViewX() - v1.getViewX(), v3.getViewY() - v1.getViewY(), v3.getViewZ() - v1.getViewZ());
         return A.crossProduct(B);
     }
 
@@ -116,7 +120,8 @@ public class Triangle {
 
     public double getZAt(double sx, double sy, boolean perspMode, double focalLength) {
         if (!perspMode) {
-            Vector n = getNormalVector();
+            Vector n = getViewNormalVector(); 
+            
             double nz = n.getZ();
             if (Math.abs(nz) < 0.000001) {
                 return (v1.getViewZ() + v2.getViewZ() + v3.getViewZ()) / 3.0;
