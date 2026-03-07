@@ -43,7 +43,8 @@ public class Main extends Canvas implements Runnable {
 
     static double scale = 1;
     static double zoomFactor = 1.0;
-    static double sensitivity = 0.1;
+    //static double sensitivity = 0.1;
+    static double sensitivity = 0.02; // for laptop
     static double flySpeed = 5.0;
     static double accelerationSpeed = 1.0;
 
@@ -554,7 +555,6 @@ public class Main extends Canvas implements Runnable {
                     dragging = true;
 
                     if (dx != 0 || dy != 0) {
-                        sensitivity = 0.1;
                         totalAngleX = Math.max(-89.0, Math.min(89.0, totalAngleX + (dy * sensitivity))); 
                         totalAngleY -= dx * sensitivity;
                         
@@ -630,7 +630,7 @@ public class Main extends Canvas implements Runnable {
         panel.addMouseWheelListener(e -> {
             double rotation = e.getPreciseWheelRotation();
             if (rotation == 0) return;
-            zoomFactor *= (rotation < 0) ? 1.05 : 0.95;
+            zoomFactor *= Math.pow(1.05, -rotation);
             scaleField.setText(String.format("%.2f", zoomFactor));
         });
 
