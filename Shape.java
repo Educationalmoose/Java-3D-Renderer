@@ -15,6 +15,10 @@ public class Shape {
     Vertex[] selectionBoxCorners = new Vertex[8];
     double scale = 1.0;
 
+    double shapeRotX = 0;
+    double shapeRotY = 0;
+    double shapeRotZ = 0;
+
     public Shape(Triangle[] triangles) {
         for (Triangle triangle : triangles) {
             this.triangles.add(triangle);
@@ -216,39 +220,20 @@ public class Shape {
         return this.scale;
     }
 
-    public void updateView(double totalAngleX, double totalAngleY, double totalAngleZ, boolean perspectiveMode, double focalLength, double camX, double camY, double camZ) {
-        center.resetView();
-        center.setViewX(center.getX() - camX);
-        center.setViewY(center.getY() - camY);
-        center.setViewZ(center.getZ() - camZ);
-
-        if (perspectiveMode) center.setViewZ(center.getViewZ() + focalLength);
-        center.rotateViewY(totalAngleY);
-        center.rotateViewX(totalAngleX);
-        center.rotateViewZ(totalAngleZ);
-        if (perspectiveMode) center.setViewZ(center.getViewZ() - focalLength);
-
+    public void updateView(Matrix4x4 viewMatrix, Matrix4x4 projectionMatrix) {
         for (Triangle t : triangles) {
             for (Vertex v : t.getVertices()) {
-                v.resetView();
-                v.setViewX(v.getX() - camX);
-                v.setViewY(v.getY() - camY);
-                v.setViewZ(v.getZ() - camZ);
-
-                if (perspectiveMode) v.setViewZ(v.getViewZ() + focalLength);
-                v.rotateViewY(totalAngleY);
-                v.rotateViewX(totalAngleX);
-                v.rotateViewZ(totalAngleZ);
-                if (perspectiveMode) v.setViewZ(v.getViewZ() - focalLength);
-
-                if (perspectiveMode) {
-                    double denom = Math.max(1.0, focalLength + v.getViewZ());
-                    v.setProjX(v.getViewX() * focalLength / denom);
-                    v.setProjY(v.getViewY() * focalLength / denom);
-                } else {
-                    v.setProjX(v.getViewX());
-                    v.setProjY(v.getViewY());
-                }
+                
+                Vertex viewSpace = viewMatrix.multiplyVertex(v);
+                
+                v.setViewX(viewSpace.getX());
+                v.setViewY(viewSpace.getY());
+                v.setViewZ(viewSpace.getZ());
+                
+                Vertex projSpace = projectionMatrix.multiplyVertex(viewSpace);
+                
+                v.setProjX(projSpace.getX());
+                v.setProjY(projSpace.getY());
             }
         }
         
@@ -261,26 +246,12 @@ public class Shape {
         };
 
         for (Vertex v : selectionBoxCorners) {
-            v.resetView();
-            v.setViewX(v.getX() - camX);
-            v.setViewY(v.getY() - camY);
-            v.setViewZ(v.getZ() - camZ);
-            
-            if (perspectiveMode) v.setViewZ(v.getViewZ() + focalLength);
-            v.rotateViewY(totalAngleY);
-            v.rotateViewX(totalAngleX);
-            v.rotateViewZ(totalAngleZ);
-            if (perspectiveMode) v.setViewZ(v.getViewZ() - focalLength);
-            
-            if (perspectiveMode) {
-                double denom = Math.max(1.0, focalLength + v.getViewZ());
-                v.setProjX(v.getViewX() * focalLength / denom);
-                v.setProjY(v.getViewY() * focalLength / denom);
-            } else {
-                v.setProjX(v.getViewX());
-                v.setProjY(v.getViewY());
-            }
+            Vertex viewSpace = viewMatrix.multiplyVertex(v);
+            Vertex projSpace = projectionMatrix.multiplyVertex(viewSpace);
+            v.setProjX(projSpace.getX());
+            v.setProjY(projSpace.getY());
         }
+
         this.boundingBox = getBoundingBox();
     }
 
@@ -293,138 +264,88 @@ public class Shape {
         return closestZ;
     }
 
-    public void drawTranslationGizmo(Graphics g, double camRotX, double camRotY, double camRotZ, double zoom, boolean perspMode, double focalLength, double camX, double camY, double camZ) {
-        Graphics2D g2 = (Graphics2D) g;
+    public void drawTranslationGizmo(Graphics g, Matrix4x4 viewMat, Matrix4x4 projMat, double zoom, boolean perspMode, double focalLength) {
+    Graphics2D g2 = (Graphics2D) g;
 
-        double arrowLength = 60.0 / zoom; 
-        double headSize = 10.0 / zoom;
+    double arrowLength = 60.0 / zoom; 
+    double headSize = 10.0 / zoom;
 
-        double[] b = getLocalSelectionBox(); 
-        double midX = (b[0] + b[1]) / 2.0;
-        double midY = (b[2] + b[3]) / 2.0;
-        double midZ = (b[4] + b[5]) / 2.0;
+    double[] b = getLocalSelectionBox(); 
+    double midX = (b[0] + b[1]) / 2.0;
+    double midY = (b[2] + b[3]) / 2.0;
+    double midZ = (b[4] + b[5]) / 2.0;
 
-        Vertex center3D = new Vertex(midX, midY, midZ);
-        center3D.resetView();
-        center3D.setViewX(center3D.getX() - camX);
-        center3D.setViewY(center3D.getY() - camY);
-        center3D.setViewZ(center3D.getZ() - camZ);
+    Vertex center3D = new Vertex(midX, midY, midZ);
+    
+    Vertex viewCenter = viewMat.multiplyVertex(center3D);
 
-        if (perspMode) center3D.setViewZ(center3D.getViewZ() + focalLength);
-        center3D.rotateViewY(camRotY);
-        center3D.rotateViewX(camRotX);
-        center3D.rotateViewZ(camRotZ);
-        if (perspMode) center3D.setViewZ(center3D.getViewZ() - focalLength);
-
-        double cx, cy;
-        if (perspMode) {
-            double w = Math.max(1.0, focalLength + center3D.getViewZ());
-            cx = center3D.getViewX() * focalLength / w;
-            cy = center3D.getViewY() * focalLength / w;
-            arrowLength *= (w / focalLength);
-        } else {
-            cx = center3D.getViewX();
-            cy = center3D.getViewY();
-        }
-
-        Vertex[] tips = {
-            new Vertex(midX + arrowLength, midY, midZ), // X Axis (Red)
-            new Vertex(midX, midY - arrowLength, midZ), // Y Axis (Green)
-            new Vertex(midX, midY, midZ + arrowLength)  // Z Axis (Blue)
-        };
-
-        double[] tX = new double[3];
-        double[] tY = new double[3];
-
-        for (int i = 0; i < 3; i++) {
-            Vertex tip = tips[i];
-            tip.resetView();
-            tip.setViewX(tip.getX() - camX);
-            tip.setViewY(tip.getY() - camY);
-            tip.setViewZ(tip.getZ() - camZ);
-            if (perspMode) tip.setViewZ(tip.getViewZ() + focalLength);
-            tip.rotateViewY(camRotY);
-            tip.rotateViewX(camRotX);
-            tip.rotateViewZ(camRotZ);
-            if (perspMode) tip.setViewZ(tip.getViewZ() - focalLength);
-
-            if (perspMode) {
-                double w = Math.max(1.0, focalLength + tip.getViewZ());
-                tX[i] = tip.getViewX() * focalLength / w;
-                tY[i] = tip.getViewY() * focalLength / w;
-            } else {
-                tX[i] = tip.getViewX();
-                tY[i] = tip.getViewY();
-            }
-        }
-
-        g2.setColor(Color.RED);
-        drawArrow(g2, cx, cy, tX[0], tY[0], headSize, zoom);
-        g2.setColor(Color.GREEN);
-        drawArrow(g2, cx, cy, tX[1], tY[1], headSize, zoom);
-        g2.setColor(Color.BLUE);
-        drawArrow(g2, cx, cy, tX[2], tY[2], headSize, zoom);
+    if (perspMode) {
+        double w = Math.max(1.0, focalLength + viewCenter.getZ());
+        arrowLength *= (w / focalLength);
     }
 
-    public String getGizmoHit(int mouseX, int mouseY, double offsetX, double offsetY, double zoom, double camRotX, double camRotY, double camRotZ, boolean perspMode, double focalLength, double camX, double camY, double camZ) {
-        double arrowLength = 60.0 / zoom; 
-        
-        double[] b = getLocalSelectionBox(); 
-        double midX = (b[0] + b[1]) / 2.0;
-        double midY = (b[2] + b[3]) / 2.0;
-        double midZ = (b[4] + b[5]) / 2.0;
-        
-        Vertex center3D = new Vertex(midX, midY, midZ);
-        center3D.resetView();
-        center3D.setViewX(center3D.getX() - camX);
-        center3D.setViewY(center3D.getY() - camY);
-        center3D.setViewZ(center3D.getZ() - camZ);
+    Vertex projCenter = projMat.multiplyVertex(viewCenter);
+    double cx = projCenter.getX();
+    double cy = projCenter.getY();
 
-        if (perspMode) center3D.setViewZ(center3D.getViewZ() + focalLength);
-        center3D.rotateViewY(camRotY);
-        center3D.rotateViewX(camRotX);
-        center3D.rotateViewZ(camRotZ);
-        if (perspMode) center3D.setViewZ(center3D.getViewZ() - focalLength);
+    Vertex[] tips = {
+        new Vertex(midX + arrowLength, midY, midZ), // x-Axis (red)
+        new Vertex(midX, midY - arrowLength, midZ), // y-Axis (green)
+        new Vertex(midX, midY, midZ + arrowLength)  // z-Axis (blue)
+    };
 
-        if (perspMode) {
-            double w = Math.max(1.0, focalLength + center3D.getViewZ());
-            arrowLength *= (w / focalLength);
-        }
+    double[] tX = new double[3];
+    double[] tY = new double[3];
 
-        String[] axes = {"X", "Y", "Z"};
-        Vertex[] tips = {
-            new Vertex(midX + arrowLength, midY, midZ),
-            new Vertex(midX, midY - arrowLength, midZ),
-            new Vertex(midX, midY, midZ + arrowLength)
-        };
-
-        for (int i = 0; i < 3; i++) {
-            Vertex tip = tips[i];
-            tip.resetView();
-            tip.setViewX(tip.getX() - camX);
-            tip.setViewY(tip.getY() - camY);
-            tip.setViewZ(tip.getZ() - camZ);
-
-            if (perspMode) tip.setViewZ(tip.getViewZ() + focalLength);
-            tip.rotateViewY(camRotY);
-            tip.rotateViewX(camRotX);
-            tip.rotateViewZ(camRotZ);
-            if (perspMode) tip.setViewZ(tip.getViewZ() - focalLength);
-
-            double tx, ty;
-            if (perspMode) {
-                double w = Math.max(1.0, focalLength + tip.getViewZ());
-                tx = (tip.getViewX() * focalLength / w * zoom) + offsetX;
-                ty = (tip.getViewY() * focalLength / w * zoom) + offsetY;
-            } else {
-                tx = (tip.getViewX() * zoom) + offsetX;
-                ty = (tip.getViewY() * zoom) + offsetY;
-            }
-
-            if (Math.hypot(mouseX - tx, mouseY - ty) < 20) return axes[i];
-        }
-        return null;
+    for (int i = 0; i < 3; i++) {
+        Vertex viewTip = viewMat.multiplyVertex(tips[i]);
+        Vertex projTip = projMat.multiplyVertex(viewTip);
+        tX[i] = projTip.getX();
+        tY[i] = projTip.getY();
     }
+
+    g2.setColor(Color.RED);
+    drawArrow(g2, cx, cy, tX[0], tY[0], headSize, zoom);
+    g2.setColor(Color.GREEN);
+    drawArrow(g2, cx, cy, tX[1], tY[1], headSize, zoom);
+    g2.setColor(Color.BLUE);
+    drawArrow(g2, cx, cy, tX[2], tY[2], headSize, zoom);
+}
+
+    public String getGizmoHit(int mouseX, int mouseY, double offsetX, double offsetY, double zoom, Matrix4x4 viewMat, Matrix4x4 projMat, boolean perspMode, double focalLength) {
+    double arrowLength = 60.0 / zoom; 
+    
+    double[] b = getLocalSelectionBox(); 
+    double midX = (b[0] + b[1]) / 2.0;
+    double midY = (b[2] + b[3]) / 2.0;
+    double midZ = (b[4] + b[5]) / 2.0;
+    
+    Vertex center3D = new Vertex(midX, midY, midZ);
+    Vertex viewCenter = viewMat.multiplyVertex(center3D);
+
+    if (perspMode) {
+        double w = Math.max(1.0, focalLength + viewCenter.getZ());
+        arrowLength *= (w / focalLength);
+    }
+
+    String[] axes = {"X", "Y", "Z"};
+    Vertex[] tips = {
+        new Vertex(midX + arrowLength, midY, midZ),
+        new Vertex(midX, midY - arrowLength, midZ),
+        new Vertex(midX, midY, midZ + arrowLength)
+    };
+
+    for (int i = 0; i < 3; i++) {
+        Vertex viewTip = viewMat.multiplyVertex(tips[i]);
+        Vertex projTip = projMat.multiplyVertex(viewTip);
+
+        double tx = (projTip.getX() * zoom) + offsetX;
+        double ty = (projTip.getY() * zoom) + offsetY;
+
+        if (Math.hypot(mouseX - tx, mouseY - ty) < 20) return axes[i];
+    }
+    return null;
+}
 
     private void drawArrow(Graphics2D g2, double x1, double y1, double x2, double y2, double headSize, double zoom) {
         double dx = x2 - x1;

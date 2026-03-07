@@ -22,12 +22,24 @@ public class Light {
     }
 
     public double getIntensityAt(Vertex v) {
-        v.subtract(origin);
-        double distance = Math.sqrt(v.getX() * v.getX() + v.getX() * v.getX() + v.getX() * v.getX()) / distanceScale;
-        double tempIntensity = 1/(distance * distance);
-        if (tempIntensity < 0.1)
-            return 0;
-        else
-            return tempIntensity;
+        double dx = v.getX() - origin.getX();
+        double dy = v.getY() - origin.getY();
+        double dz = v.getZ() - origin.getZ();
+
+        double distance = Math.sqrt(dx * dx + dy * dy + dz * dz) / distanceScale;
+        
+        if (distance < 0.001) distance = 0.001;
+
+        double tempIntensity = 1 / (distance * distance);
+        
+        return tempIntensity; 
+    }
+
+    public void setIntensity(double intensity) {
+        this.intensity = intensity;
+    }
+
+    public double getIntensity() {
+        return this.intensity;
     }
 }

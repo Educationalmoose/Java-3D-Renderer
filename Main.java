@@ -23,6 +23,7 @@ public class Main extends Canvas implements Runnable {
     static ScrubbableField xFieldLight;
     static ScrubbableField yFieldLight;
     static ScrubbableField zFieldLight;
+    static ScrubbableField intensityFieldLight;
 
     static ScrubbableField xFieldShape;
     static ScrubbableField yFieldShape;
@@ -43,10 +44,11 @@ public class Main extends Canvas implements Runnable {
     static double scale = 1;
     static double zoomFactor = 1.0;
     static double sensitivity = 0.1;
-    static double flySpeed = 2.0;
+    static double flySpeed = 5.0;
     static double accelerationSpeed = 1.0;
 
-    static Vector lightDir = new Vector(0, 0, 1).normalize();
+    static Light pointLight = new Light(new Vertex(0, -150, -100), 10.0, Color.WHITE);
+    //static Vector lightDir = new Vector(0, 0, 1).normalize();
 
     static Point lastMousePos;
     static double totalAngleX = 0;
@@ -69,6 +71,30 @@ public class Main extends Canvas implements Runnable {
     private boolean running = false;
     private int currentFPS = 0;
     private double currentFrameTimeMs = 0;
+
+    static Matrix4x4 viewMatrix = new Matrix4x4();
+    static Matrix4x4 projectionMatrix = new Matrix4x4();
+
+    static java.awt.Robot robot;
+    static Cursor blankCursor;
+    static boolean isRightMouseDragging = false;
+    static Point lockPos = null;
+
+    static BufferedImage canvas;
+    static double[] zBuffer;
+    static int[] pixels;
+    static int lastWidth = -1;
+    static int lastHeight = -1;
+
+    static {
+        try {
+            robot = new java.awt.Robot();
+            BufferedImage cursorImg = new BufferedImage(16, 16, BufferedImage.TYPE_INT_ARGB);
+            blankCursor = java.awt.Toolkit.getDefaultToolkit().createCustomCursor(cursorImg, new Point(0, 0), "blank cursor");
+        } catch (Exception e) {
+            e.printStackTrace();
+        }
+    }
 
     public static void main(String[] args) {
         javax.swing.SwingUtilities.invokeLater(new Runnable() {
@@ -126,7 +152,7 @@ public class Main extends Canvas implements Runnable {
             double[] right = localToWorld(1,  0,  0);
             double[] up = localToWorld(0, -1,  0);
 
-            double spd = flySpeed * accelerationSpeed;
+            double spd = flySpeed * accelerationSpeed * (currentFrameTimeMs / 10.0);
             boolean accelerating = pressedKeys.contains(java.awt.event.KeyEvent.VK_SHIFT);
 
             if (pressedKeys.contains(java.awt.event.KeyEvent.VK_A)) { camX -= right[0]*spd; camY -= right[1]*spd; camZ -= right[2]*spd; }
@@ -145,9 +171,31 @@ public class Main extends Canvas implements Runnable {
             }
         }
 
+        Matrix4x4 camTranslation = Matrix4x4.makeTranslation(-camX, -camY, -camZ);
+        Matrix4x4 focalPush = Matrix4x4.makeTranslation(0, 0, focalLength);
+        Matrix4x4 focalPull = Matrix4x4.makeTranslation(0, 0, -focalLength);
+
+        Matrix4x4 camRotX = Matrix4x4.makeRotationX(totalAngleX);
+        Matrix4x4 camRotY = Matrix4x4.makeRotationY(totalAngleY);
+        Matrix4x4 camRotZ = Matrix4x4.makeRotationZ(totalAngleZ);
+
+        viewMatrix = camTranslation;
+        
+        if (perspectiveMode) {
+            viewMatrix = viewMatrix.multiply(focalPush);
+        }
+        
+        viewMatrix = viewMatrix.multiply(camRotY).multiply(camRotX).multiply(camRotZ);
+        
+        if (perspectiveMode) {
+            viewMatrix = viewMatrix.multiply(focalPull);
+        }
+
+        projectionMatrix = Matrix4x4.makeProjection(focalLength, perspectiveMode);
+
         synchronized(shapes) {
             for (Shape s : shapes) {
-                s.updateView(totalAngleX, totalAngleY, totalAngleZ, perspectiveMode, focalLength, camX, camY, camZ);
+                s.updateView(viewMatrix, projectionMatrix);
             }
         }
     }
@@ -171,8 +219,15 @@ public class Main extends Canvas implements Runnable {
         g.setColor(Color.BLACK);
         g.fillRect(0, 0, width, height);
 
-        BufferedImage canvas = new BufferedImage(width, height, BufferedImage.TYPE_INT_RGB);
-        double[] zBuffer = new double[width * height];
+        if (width != lastWidth || height != lastHeight) {
+            canvas = new BufferedImage(width, height, BufferedImage.TYPE_INT_RGB);
+            pixels = ((java.awt.image.DataBufferInt) canvas.getRaster().getDataBuffer()).getData();
+            zBuffer = new double[width * height];
+            lastWidth = width;
+            lastHeight = height;
+        }
+
+        java.util.Arrays.fill(pixels, 0);
         java.util.Arrays.fill(zBuffer, Double.MAX_VALUE);
         
         renderScene(shapes.toArray(new Shape[0]), canvas, zBuffer);
@@ -197,7 +252,7 @@ public class Main extends Canvas implements Runnable {
             g2.scale(zoomFactor, zoomFactor);
             g2.setStroke(new BasicStroke((float)(2.0 / zoomFactor)));
             selectedShape.drawLocalSelectionBox(g2);
-            selectedShape.drawTranslationGizmo(g2, totalAngleX, totalAngleY, totalAngleZ, zoomFactor, perspectiveMode, focalLength, camX, camY, camZ);
+            selectedShape.drawTranslationGizmo(g2, viewMatrix, projectionMatrix, zoomFactor, perspectiveMode, focalLength);
             g2.dispose();
         }
 
@@ -291,34 +346,37 @@ public class Main extends Canvas implements Runnable {
         JPanel lightPanel = new JPanel();
         lightPanel.setLayout(new BoxLayout(lightPanel, BoxLayout.Y_AXIS));
         JPanel lightVectorGrid = new JPanel();
-        lightVectorGrid.setLayout(new GridLayout(3, 2, 5, 5));
+        lightVectorGrid.setLayout(new GridLayout(4, 2, 5, 5));
 
         JLabel lightPanelLabel = new JLabel("Light");
         JLabel xLabelLight = new JLabel("X:");
         JLabel yLabelLight = new JLabel("Y:");
         JLabel zLabelLight = new JLabel("Z:");
-        xFieldLight = new ScrubbableField(0.0, -1.0, 1.0, 0.005);
+        JLabel intensityLabelLight = new JLabel("Intensity:");
+        xFieldLight = new ScrubbableField(0.0, -1000.0, 1000.0, 1.0);
         xFieldLight.setOnValueChange(val -> {
-            double y = Double.parseDouble(yFieldLight.getText());
-            double z = Double.parseDouble(zFieldLight.getText());
-            Main.lightDir = new Vector(val, y, z).normalize();
+            Main.pointLight.origin.setX(val);
         });
-        yFieldLight = new ScrubbableField(0.0, -1.0, 1.0, 0.005);
+        
+        yFieldLight = new ScrubbableField(-150.0, -1000.0, 1000.0, 1.0);
         yFieldLight.setOnValueChange(val -> {
-            double x = Double.parseDouble(xFieldLight.getText());
-            double z = Double.parseDouble(zFieldLight.getText());
-            Main.lightDir = new Vector(x, val, z).normalize();
+            Main.pointLight.origin.setY(val);
         });
-        zFieldLight = new ScrubbableField(1.0, -1.0, 1.0, 0.005);
+        
+        zFieldLight = new ScrubbableField(-100.0, -1000.0, 1000.0, 1.0);
         zFieldLight.setOnValueChange(val -> {
-            double x = Double.parseDouble(xFieldLight.getText());
-            double y = Double.parseDouble(yFieldLight.getText());
-            Main.lightDir = new Vector(x, y, val).normalize();
+            Main.pointLight.origin.setZ(val);
+        });
+
+        intensityFieldLight = new ScrubbableField(pointLight.getIntensity(), 0.0, 100.0, 0.05); 
+        intensityFieldLight.setOnValueChange(val -> {
+            Main.pointLight.setIntensity(val);
         });
 
         lightVectorGrid.add(xLabelLight); lightVectorGrid.add(xFieldLight);
         lightVectorGrid.add(yLabelLight); lightVectorGrid.add(yFieldLight);
         lightVectorGrid.add(zLabelLight); lightVectorGrid.add(zFieldLight);
+        lightVectorGrid.add(intensityLabelLight); lightVectorGrid.add(intensityFieldLight);
 
         lightPanelLabel.setAlignmentX(Component.CENTER_ALIGNMENT);
         lightVectorGrid.setAlignmentX(Component.CENTER_ALIGNMENT);
@@ -411,7 +469,7 @@ public class Main extends Canvas implements Runnable {
                     totalAngleX = 0; totalAngleY = 0; totalAngleZ = 0;
                     camX = 0; camY = 0; camZ = 0;
                     shapes.add(objShape);
-                    objShape.updateView(totalAngleX, totalAngleY, totalAngleZ, perspectiveMode, focalLength, camX, camY, camZ);
+                    objShape.updateView(viewMatrix, projectionMatrix);
                 } else {
                     JOptionPane.showMessageDialog(frame, "Failed to load OBJ file.");
                 }
@@ -427,7 +485,7 @@ public class Main extends Canvas implements Runnable {
                 Shape objShape = panel.parseObjFile(fileChooser.getSelectedFile().getAbsolutePath());
                 if (objShape != null) {
                     shapes.add(objShape);
-                    objShape.updateView(totalAngleX, totalAngleY, totalAngleZ, perspectiveMode, focalLength, camX, camY, camZ);
+                    objShape.updateView(viewMatrix, projectionMatrix);
                 } else {
                     JOptionPane.showMessageDialog(frame, "Failed to load OBJ file.");
                 }
@@ -469,20 +527,42 @@ public class Main extends Canvas implements Runnable {
         
 
         MouseAdapter mouseAdapter = new MouseAdapter() {
+            boolean dragging = false;
             @Override
             public void mousePressed(MouseEvent e) {
-                pressPoint = e.getPoint(); lastMousePos = e.getPoint();
-                if (selectedShape != null) {
+                pressPoint = e.getPoint(); 
+                lastMousePos = e.getPoint();
+
+                if (javax.swing.SwingUtilities.isRightMouseButton(e)) {
+                    isRightMouseDragging = true;
+                    panel.setCursor(blankCursor);
+                    lockPos = e.getLocationOnScreen();
+                } else if (selectedShape != null) {
                     draggingAxis = selectedShape.getGizmoHit(
                         e.getX(), e.getY(), panel.getWidth() / 2.0, panel.getHeight() / 2.0, 
-                        zoomFactor, totalAngleX, totalAngleY, totalAngleZ, perspectiveMode, focalLength, camX, camY, camZ
+                        zoomFactor, viewMatrix, projectionMatrix, perspectiveMode, focalLength
                     );
                 }
             }
 
             @Override
             public void mouseDragged(MouseEvent e) {
-                if (lastMousePos != null) {
+                if (isRightMouseDragging && lockPos != null) {
+                    Point currentScreenPos = e.getLocationOnScreen();
+                    int dx = currentScreenPos.x - lockPos.x;
+                    int dy = currentScreenPos.y - lockPos.y;
+                    dragging = true;
+
+                    if (dx != 0 || dy != 0) {
+                        sensitivity = 0.1;
+                        totalAngleX = Math.max(-89.0, Math.min(89.0, totalAngleX + (dy * sensitivity))); 
+                        totalAngleY -= dx * sensitivity;
+                        
+                        if (robot != null) {
+                            robot.mouseMove(lockPos.x, lockPos.y);
+                        }
+                    }
+                } else if (lastMousePos != null) {
                     int dx = e.getX() - lastMousePos.x;
                     int dy = e.getY() - lastMousePos.y;
 
@@ -505,10 +585,6 @@ public class Main extends Canvas implements Runnable {
                             xFieldShape.setText(String.format("%.2f", selectedShape.getCenter().getX()));
                             yFieldShape.setText(String.format("%.2f", -selectedShape.getCenter().getY()));
                             zFieldShape.setText(String.format("%.2f", selectedShape.getCenter().getZ()));
-                        } else if (javax.swing.SwingUtilities.isRightMouseButton(e)) {
-                            double sensitivity = 0.3;
-                            totalAngleX = Math.max(-89.0, Math.min(89.0, totalAngleX + (dy * sensitivity))); 
-                            totalAngleY -= dx * sensitivity;
                         }
                     }
                     lastMousePos = e.getPoint();
@@ -517,7 +593,15 @@ public class Main extends Canvas implements Runnable {
 
             @Override
             public void mouseReleased(MouseEvent e) {
-                isPaused = false; draggingAxis = null;
+                isPaused = false; 
+                draggingAxis = null;
+
+                if (javax.swing.SwingUtilities.isRightMouseButton(e)) {
+                    isRightMouseDragging = false;
+                    panel.setCursor(Cursor.getDefaultCursor());
+                    lockPos = null;
+                }
+
                 if (pressPoint != null && pressPoint.distance(e.getPoint()) < 5) {
                     double worldX = (e.getX() - panel.getWidth() / 2.0) / Main.zoomFactor;
                     double worldY = (e.getY() - panel.getHeight() / 2.0) / Main.zoomFactor;
@@ -533,9 +617,10 @@ public class Main extends Canvas implements Runnable {
                         zFieldShape.setText("0.0");
                     }
 
-                    if (javax.swing.SwingUtilities.isRightMouseButton(e) && selectedShape != null) {
+                    if (javax.swing.SwingUtilities.isRightMouseButton(e) && selectedShape != null && !dragging) {
                         shapeMenu.show(panel, e.getX(), e.getY());
                     }
+                    dragging = false;
                 }
             }
         };
@@ -568,12 +653,15 @@ public class Main extends Canvas implements Runnable {
         frame.add(eastWrapper, BorderLayout.EAST);
 
         // default cube shape
-        Vertex vTLF = new Vertex(-50, -50, 0), vBLF = new Vertex(-50, 50, 0), vTRF = new Vertex(50, -50, 0), vBRF = new Vertex(50, 50, 0);
-        Vertex vTLB = new Vertex(-50, -50, 100), vBLB = new Vertex(-50, 50, 100), vTRB = new Vertex(50, -50, 100), vBRB = new Vertex(50, 50, 100);
+        Vertex vTLF = new Vertex(-50, -50, -50), vBLF = new Vertex(-50, 50, -50), vTRF = new Vertex(50, -50, -50), vBRF = new Vertex(50, 50, -50);
+        Vertex vTLB = new Vertex(-50, -50, 50), vBLB = new Vertex(-50, 50, 50), vTRB = new Vertex(50, -50, 50), vBRB = new Vertex(50, 50, 50);
         Shape cube = new Shape(new Triangle[]{
-            new Triangle(vTLF, vBLF, vTRF), new Triangle(vTRF, vBLF, vBRF), new Triangle(vTLB, vBLB, vTRB), new Triangle(vTRB, vBLB, vBRB),
-            new Triangle(vTLB, vBLB, vTLF), new Triangle(vTLF, vBLB, vBLF), new Triangle(vTRF, vBRF, vTRB), new Triangle(vTRB, vBRF, vBRB),
-            new Triangle(vTLB, vTLF, vTRB), new Triangle(vTRB, vTLF, vTRF), new Triangle(vBLF, vBLB, vBRF), new Triangle(vBRF, vBLB, vBRB)
+            new Triangle(vTLF, vBLF, vTRF), new Triangle(vTRF, vBLF, vBRF),
+            new Triangle(vTLB, vTRB, vBLB), new Triangle(vTRB, vBRB, vBLB),
+            new Triangle(vTLB, vBLB, vTLF), new Triangle(vTLF, vBLB, vBLF),
+            new Triangle(vTRB, vTRF, vBRB), new Triangle(vTRF, vBRF, vBRB),
+            new Triangle(vTLB, vTLF, vTRB), new Triangle(vTRB, vTLF, vTRF),
+            new Triangle(vBLB, vBRB, vBLF), new Triangle(vBLF, vBRB, vBRF)
         });
 
         panel.addShape(cube);
@@ -597,8 +685,6 @@ public class Main extends Canvas implements Runnable {
 
         if (showGrid) drawGridIntoCanvas(canvas, zBuffer, offsetX, offsetY);
 
-        int[] pixels = ((java.awt.image.DataBufferInt) canvas.getRaster().getDataBuffer()).getData();
-
         if (wireframeMode) {
             Graphics2D g2 = (Graphics2D) canvas.getGraphics();
             g2.translate(offsetX, offsetY);
@@ -621,11 +707,13 @@ public class Main extends Canvas implements Runnable {
                         double camRayX = t.getVertices()[0].getViewX();
                         double camRayY = t.getVertices()[0].getViewY();
                         double camRayZ = t.getVertices()[0].getViewZ() + focalLength;
+                        
                         dot = (camRayX * viewNormal.getX()) + (camRayY * viewNormal.getY()) + (camRayZ * viewNormal.getZ());
                     } else {
                         dot = viewNormal.getZ();
                     }
-                    if (dot >= 0) continue; 
+
+                    if (dot >= 0) continue;
 
                     t.drawWireframe(g2);
                 }
@@ -653,12 +741,14 @@ public class Main extends Canvas implements Runnable {
                         double camRayX = t.getVertices()[0].getViewX();
                         double camRayY = t.getVertices()[0].getViewY();
                         double camRayZ = t.getVertices()[0].getViewZ() + focalLength;
+                        
                         dot = (camRayX * viewNormal.getX()) + (camRayY * viewNormal.getY()) + (camRayZ * viewNormal.getZ());
                     } else {
                         dot = viewNormal.getZ();
                     }
 
                     if (dot >= 0) return;
+
 
                     double[] bb = t.getBoundingBox();
                     int minX = Math.max(0, (int) (bb[0] * zoomFactor) + offsetX);
@@ -667,7 +757,7 @@ public class Main extends Canvas implements Runnable {
                     int maxY = Math.min(canvas.getHeight() - 1, (int) (bb[3] * zoomFactor) + offsetY);
 
                     Vector normal = t.getNormalVector();
-                    int triangleColor = calculateColor(t.getColor(), 0, normal); 
+                    int triangleColor = calculateColor(t.getColor(), t);
 
                     for (int y = minY; y <= maxY; y++) {
                         for (int x = minX; x <= maxX; x++) {
@@ -692,15 +782,27 @@ public class Main extends Canvas implements Runnable {
         }
     }
 
-    public int calculateColor(Color baseColor, double z, Vector normal) {
-        Vector n = normal.normalize();
-        double dot = n.dotProduct(lightDir);
-        double lightIntensity = Math.max(0.2, Math.abs(dot));
+    public int calculateColor(Color baseColor, Triangle t) {
+        Vertex tCenter = t.getCenter();
+        Vector normal = t.getNormalVector().normalize();
+        
+        Vector dirToLight = new Vector(
+            pointLight.origin.getX() - tCenter.getX(),
+            pointLight.origin.getY() - tCenter.getY(),
+            pointLight.origin.getZ() - tCenter.getZ()
+        ).normalize();
+
+        double dot = normal.dotProduct(dirToLight);
+        if (dot < 0) dot = 0; 
+
+        double falloff = pointLight.getIntensityAt(tCenter) * pointLight.intensity;
+
+        double finalIntensity = Math.min(1.0, 0.1 + (dot * falloff));
 
         return new Color(
-            Math.min(255, (int)(baseColor.getRed() * lightIntensity)),
-            Math.min(255, (int)(baseColor.getGreen() * lightIntensity)),
-            Math.min(255, (int)(baseColor.getBlue() * lightIntensity))
+            Math.min(255, (int)(baseColor.getRed() * finalIntensity)),
+            Math.min(255, (int)(baseColor.getGreen() * finalIntensity)),
+            Math.min(255, (int)(baseColor.getBlue() * finalIntensity))
         ).getRGB();
     }
 
@@ -729,6 +831,20 @@ public class Main extends Canvas implements Runnable {
             }
         } catch (FileNotFoundException e) { e.printStackTrace(); }
 
+        double cx = 0, cy = 0, cz = 0;
+        for (Vertex v : localVertices) {
+            cx += v.getX(); cy += v.getY(); cz += v.getZ();
+        }
+        cx /= localVertices.size(); 
+        cy /= localVertices.size(); 
+        cz /= localVertices.size();
+
+        for (Vertex v : localVertices) {
+            v.setX(v.getX() - cx);
+            v.setY(v.getY() - cy);
+            v.setZ(v.getZ() - cz);
+        }
+
         double maxCoord = 0;
         for (Vertex v : localVertices) {
             maxCoord = Math.max(maxCoord, Math.max(Math.abs(v.getX()), Math.max(Math.abs(v.getY()), Math.abs(v.getZ()))));
@@ -746,14 +862,12 @@ public class Main extends Canvas implements Runnable {
 
     private void drawGridIntoCanvas(BufferedImage canvas, double[] zBuffer, int offX, int offY) {
         Graphics2D g2 = (Graphics2D) canvas.getGraphics();
-        // Antialiasing on hundreds of thin grid lines is very expensive — not worth it
         g2.setRenderingHint(RenderingHints.KEY_ANTIALIASING, RenderingHints.VALUE_ANTIALIAS_OFF);
         
         int spacing = 100; 
         double buffer;
 
         if (perspectiveMode) {
-            // 4000 was spawning 80+ lines per axis regardless of zoom; scale with focalLength instead
             buffer = focalLength * 4.0;
         } else {
             buffer = Math.max((canvas.getWidth() / 2.0) / zoomFactor, (canvas.getHeight() / 2.0) / zoomFactor) * 2;
