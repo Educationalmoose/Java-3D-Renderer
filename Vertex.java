@@ -2,9 +2,10 @@ public class Vertex {
     private double x,y,z;
     private double viewx, viewy, viewz;
 
-    // Projected screen coords. In orthographic mode these equal viewx/viewy.
-    // In perspective mode these are the perspective divided screen coords.
     private double projx, projy;
+
+    private double u = 0.0;
+    private double v = 0.0;
     
     public Vertex(double x, double y, double z) {
         this.x = x;
@@ -156,6 +157,20 @@ public class Vertex {
         this.z = this.z * factor;
     }
 
+    // uv stuff
+    public void setUV(double u, double v) {
+        this.u = u;
+        this.v = v;
+    }
+
+    public double getU() {
+        return this.u;
+    }
+
+    public double getV() {
+        return this.v;
+    
+    }
     @Override
     public String toString() {
         return "(" + this.x + ", " + this.y + ", " + this.z + ")";

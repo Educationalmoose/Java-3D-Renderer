@@ -1,6 +1,7 @@
 import java.awt.Color;
 import java.awt.Graphics;
 import java.awt.Graphics2D;
+import java.awt.image.BufferedImage;
 
 public class Triangle {
     private Vertex v1;
@@ -10,6 +11,8 @@ public class Triangle {
     double[] boundingBox = new double[4];
 
     private Color color = Color.LIGHT_GRAY;
+
+    public BufferedImage texture = null;
 
     public Triangle(Vertex v1, Vertex v2, Vertex v3) {
         this.v1 = v1;
