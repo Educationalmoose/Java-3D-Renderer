@@ -275,7 +275,11 @@ public class Main extends Canvas implements Runnable {
 
         scaleField.addActionListener(e -> {
             try {
-                scale = Double.parseDouble(scaleField.getText());
+                double tempScale = Double.parseDouble(scaleField.getText());
+                if (tempScale <= 0.3)
+                    scale = 0.3;
+                if (tempScale >= 5)
+                    scale = 5;
                 for (Shape s : shapes) {
                     s.scaleBy(scale / s.getScale());
                 }
